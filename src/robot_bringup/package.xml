@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>robot_bringup</name>
+  <version>0.1.0</version>
+  <description>Bringup package for a real robot: TFs, odom->base_link broadcaster, and launch scaffolding.</description>
+
+  <maintainer email="you@example.com">your_name</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <!-- Build -->
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- Dependencies (ROS1 Noetic) -->
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <!-- If you use MORAI messages, uncomment: -->
+  <!-- <depend>morai_msgs</depend> -->
+
+  <export>
+  </export>
+</package>
