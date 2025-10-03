@@ -13,20 +13,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git wget curl vim tmux nano sudo \
     python3-pip python3-colcon-common-extensions \
     python3-rosdep python3-vcstool \
-    # Linear algebra / vision / geo
-    libeigen3-dev libopencv-dev libgeographic-dev geographiclib-tools \
+    # Linear algebra / vision (C++ OpenCV)
+    libeigen3-dev libopencv-dev \
+    # Python OpenCV (cv2)
+    python3-opencv \
     # PCL & friends (optional; safe to have)
     libpcl-dev ros-noetic-pcl-ros ros-noetic-pcl-conversions \
     # TF / common ROS deps
     ros-noetic-tf2-ros ros-noetic-tf2-geometry-msgs ros-noetic-nav-msgs \
+    # --- MORAI에서 자주 쓰는 ROS 패키지 ---
+    # 이미지/카메라 파이프라인
+    ros-noetic-vision-opencv ros-noetic-cv-bridge ros-noetic-image-transport \
+    ros-noetic-image-geometry ros-noetic-camera-info-manager \
+    # 주행/제어 메시지
+    ros-noetic-ackermann-msgs \
+    # 유틸 & 디버깅
+    ros-noetic-rviz ros-noetic-rqt ros-noetic-rqt-graph ros-noetic-rqt-plot \
+    # Video I/O (카메라/동영상 스트림 편의)
+    v4l-utils ffmpeg \
+    gstreamer1.0-tools gstreamer1.0-libav \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     # Utilities
     udev usbutils less htop \
  && rm -rf /var/lib/apt/lists/*
 
-# Ensure GeographicLib datasets are present (for GeographicLib::LocalCartesian accuracy)
-RUN geographiclib-get-geoids egm96-5 && geographiclib-get-datasets gravity magnetic
+# (GeographicLib datasets 설치 제거됨)
 
-# Create a non-root user (optional). Comment out if you prefer root.
+# Create a non-root user
 ARG USER=developer
 ARG UID=1000
 ARG GID=1000
@@ -46,9 +59,14 @@ RUN echo "source /opt/ros/noetic/setup.bash" >> /etc/bash.bashrc && \
     echo "export ROS_DISTRO=noetic" >> /etc/bash.bashrc && \
     echo "export ROS_LOCALHOST_ONLY=0" >> /etc/bash.bashrc
 
-# Workspace mount point hint (will be bind-mounted by docker-compose)
-WORKDIR /root/autorace_kkk_ws
+# (선택) Python 유틸 패키지 몇 개
+RUN python3 -m pip install --no-cache-dir \
+    numpy matplotlib tqdm
+
+# Workspace mount point hint (home 아래)
+WORKDIR /home/${USER}/autorace_kkk_ws
 
 # Default shell
 USER ${USER}
 CMD ["/bin/bash"]
+

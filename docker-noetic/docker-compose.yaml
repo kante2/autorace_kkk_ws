@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        USER: "developer"     # host UID/GID below should match your real user if you want file ownership aligned
+        USER: "developer"
         UID: "${HOST_UID-1000}"
         GID: "${HOST_GID-1000}"
     container_name: autorace-noetic-dev
@@ -23,18 +23,14 @@ services:
       - ROS_HOSTNAME=${ROS_HOSTNAME-localhost}
       - TZ=Asia/Seoul
     volumes:
-      # Workspace (edit here if your host path differs)
-      - ${HOME}/autorace_kkk_ws:/root/autorace_kkk_ws:rw
-      # X11 socket for GUI apps (rviz, rqt, etc.)
+      - ${HOME}/autorace_kkk_ws:/home/developer/autorace_kkk_ws:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # Optional: Share Xauthority for safer X11
       - ${HOME}/.Xauthority:/home/developer/.Xauthority:rw
-      # Local time sync
       - /etc/localtime:/etc/localtime:ro
-      # USB/serial devices (LiDAR, IMU, etc.)
       - /dev:/dev
     devices:
       - /dev/dri:/dev/dri
-    working_dir: /root/autorace_kkk_ws
+    working_dir: /home/developer/autorace_kkk_ws
     stdin_open: true
     tty: true
+
