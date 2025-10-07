@@ -7,6 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   morai_msgs
   rosbag
+  visualization_msgs
 )
 
 catkin_package()
@@ -27,4 +28,8 @@ include_directories(
 add_executable(main_node src/main_node.cpp)
 target_compile_features(main_node PRIVATE cxx_std_11)
 target_link_libraries(main_node ${catkin_LIBRARIES})
+
+add_executable(scan_avoid_paths src/scan_avoid_paths.cpp)
+target_link_libraries(scan_avoid_paths ${catkin_LIBRARIES})
+add_dependencies(scan_avoid_paths ${catkin_EXPORTED_TARGETS})
 

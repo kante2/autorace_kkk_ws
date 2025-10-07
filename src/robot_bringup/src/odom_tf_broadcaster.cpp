@@ -1,62 +1,44 @@
 #include <ros/ros.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
-#include <tf/transform_broadcaster.h>
 
-/**
- * Simple TF broadcaster:
- * - Subscribes: /wheel_odom (nav_msgs/Odometry) or param ~odom_topic
- * - Publishes TF: odom -> base_link using msg.pose.pose
- * - Republishes Odometry to /odom (optional, enabled by ~republish_odom)
- */
-class OdomTFBroadcaster {
-public:
-  OdomTFBroadcaster(ros::NodeHandle& nh, ros::NodeHandle& pnh) {
-    pnh.param<std::string>("odom_topic", odom_topic_, "/wheel_odom");
-    pnh.param<std::string>("odom_frame", odom_frame_, "odom");
-    pnh.param<std::string>("base_frame", base_frame_, "base_link");
-    pnh.param<bool>("republish_odom", republish_odom_, true);
-    sub_ = nh.subscribe(odom_topic_, 50, &OdomTFBroadcaster::cbOdom, this);
-    if (republish_odom_) pub_ = nh.advertise<nav_msgs::Odometry>("/odom", 10);
-    ROS_INFO_STREAM("[odom_tf_broadcaster] listening to " << odom_topic_
-                    << ", TF: " << odom_frame_ << " -> " << base_frame_
-                    << ", republish_odom=" << (republish_odom_ ? "true" : "false"));
-  }
+static tf2_ros::TransformBroadcaster* g_br = nullptr;  // 전역 포인터(간단 버전)
 
-private:
-  void cbOdom(const nav_msgs::Odometry::ConstPtr& msg) {
-    // Publish TF using pose in Odometry
-    geometry_msgs::TransformStamped ts;
-    ts.header.stamp = msg->header.stamp.isZero() ? ros::Time::now() : msg->header.stamp;
-    ts.header.frame_id = odom_frame_;
-    ts.child_frame_id  = base_frame_;
-    ts.transform.translation.x = msg->pose.pose.position.x;
-    ts.transform.translation.y = msg->pose.pose.position.y;
-    ts.transform.translation.z = msg->pose.pose.position.z;
-    ts.transform.rotation = msg->pose.pose.orientation;
-    br_.sendTransform(ts);
+// ODOM -> BASELINK
+/*
+해당 노드는 들어오는 /odom 메시지의 포즈(= odom 기준 base_link의 위치·자세)를 그대로 TF(odom-> base_link)로 중계.
+즉, 로봇이 움직여서 /odom의 pose가 변하면, 그 값이 곧바로 tfm.transform.translation/rotation에 복사돼서 퍼블리시됨.
+*/
+geometry_msgs::TransformStamped makeTf(const nav_msgs::Odometry& odom){
+  geometry_msgs::TransformStamped tfm;
+  tfm.header = odom.header; // 보통 frame_id="odom"
+  tfm.child_frame_id = !odom.child_frame_id.empty() ? odom.child_frame_id : "base_link";
+  //  tx, ty, tz
+  tfm.transform.translation.x = odom.pose.pose.position.x;
+  tfm.transform.translation.y = odom.pose.pose.position.y;
+  tfm.transform.translation.z = odom.pose.pose.position.z;
+  tfm.transform.rotation      = odom.pose.pose.orientation;
+  return tfm;
+}
 
-    if (republish_odom_) {
-      nav_msgs::Odometry out = *msg;
-      out.header.frame_id = odom_frame_;
-      out.child_frame_id  = base_frame_;
-      pub_.publish(out);
-    }
-  }
+void odomCb(const nav_msgs::Odometry::ConstPtr& msg){
+  if(!g_br) return;
+  // -> : 포인터를 통해 멤버에 접근(포인터 g_br로 객체의 sendTransform 호출).
+  g_br->sendTransform(makeTf(*msg));
+}
 
-  std::string odom_topic_;
-  std::string odom_frame_;
-  std::string base_frame_;
-  bool republish_odom_;
-  ros::Subscriber sub_;
-  ros::Publisher pub_;
-  tf::TransformBroadcaster br_;
-};
-
-int main(int argc, char** argv) {
-  ros::init(argc, argv, "odom_tf_broadcaster");
+int main(int argc, char** argv){
+  ros::init(argc, argv, "odom_broadcaster");
   ros::NodeHandle nh;
-  ros::NodeHandle pnh("~");
-  OdomTFBroadcaster node(nh, pnh);
+
+  tf2_ros::TransformBroadcaster br;
+  g_br = &br;  // 콜백에서 접근할 수 있게 등록
+
+  // odom은 로봇이 시작할때의 위치에 해당
+  ros::Subscriber sub = nh.subscribe("/odom", 10, odomCb);
+
   ros::spin();
+  g_br = nullptr;
   return 0;
 }

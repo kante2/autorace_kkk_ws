@@ -14,3 +14,6 @@ https://github.com/ros/geometry2.git
 
 # f1tenth_gym_ros
 git clone -b ros1 https://github.com/f1tenth/f1tenth_gym_ros.git
+
+# docker
+불안정 할수 있음, 아직 테스트하기 이전
