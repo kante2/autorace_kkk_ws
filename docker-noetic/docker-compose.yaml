@@ -3,13 +3,10 @@ version: "3.9"
 services:
   ros-noetic-dev:
     build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        USER: "developer"
-        UID: "${HOST_UID-1000}"
-        GID: "${HOST_GID-1000}"
+      context: ..
+      dockerfile: docker-noetic/Dockerfile
     container_name: autorace-noetic-dev
+    working_dir: /root/autorace_kkk_ws
     network_mode: host
     privileged: true
     runtime: nvidia
@@ -28,9 +25,10 @@ services:
       - ${HOME}/.Xauthority:/home/developer/.Xauthority:rw
       - /etc/localtime:/etc/localtime:ro
       - /dev:/dev
+      - ~/.ssh:/root/.ssh:ro
     devices:
       - /dev/dri:/dev/dri
-    working_dir: /home/developer/autorace_kkk_ws
+      
     stdin_open: true
     tty: true
 
