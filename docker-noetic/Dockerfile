@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Python OpenCV (cv2)
     python3-opencv \
     # PCL & friends (optional; safe to have)
-    libpcl-dev ros-noetic-pcl-ros ros-noetic-pcl-conversions \
+    libpcl-dev ros-noetic-pcl-ros ros-noetic-pcl-conversions ros-noetic-openslam-gmapping \
     # TF / common ROS deps
     ros-noetic-tf2-ros ros-noetic-tf2-geometry-msgs ros-noetic-nav-msgs \
     # --- MORAI에서 자주 쓰는 ROS 패키지 ---

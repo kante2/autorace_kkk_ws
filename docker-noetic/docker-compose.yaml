@@ -20,7 +20,7 @@ services:
       - ROS_HOSTNAME=${ROS_HOSTNAME-localhost}
       - TZ=Asia/Seoul
     volumes:
-      - ${HOME}/autorace_kkk_ws:/home/developer/autorace_kkk_ws:rw
+      - ${HOME}/autorace_kkk_ws:/root/autorace_kkk_ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOME}/.Xauthority:/home/developer/.Xauthority:rw
       - /etc/localtime:/etc/localtime:ro
@@ -33,4 +33,3 @@ services:
     tty: true
     restart: unless-stopped
     command: ["bash", "-lc", "source /opt/ros/noetic/setup.bash && sleep infinity"]
-
