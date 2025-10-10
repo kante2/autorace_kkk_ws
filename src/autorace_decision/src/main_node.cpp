@@ -44,3 +44,13 @@
 5-tm2. 
 
 */
+// src/autorace_decision/src/main_node.cpp
+#include <ros/ros.h>
+
+int main(int argc, char** argv) {
+  ros::init(argc, argv, "main_node");
+  ros::NodeHandle nh;
+  ROS_INFO("autorace_decision main_node started");
+  ros::spin();
+  return 0;
+}
