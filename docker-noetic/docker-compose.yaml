@@ -31,4 +31,6 @@ services:
       
     stdin_open: true
     tty: true
+    restart: unless-stopped
+    command: ["bash", "-lc", "source /opt/ros/noetic/setup.bash && sleep infinity"]
 
