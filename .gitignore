@@ -13,3 +13,5 @@ __pycache__/
 
 !src/MORAI-ROS_morai_msgs/**
 !src/f1tenth_gym_ros/**
+!src/geometry2/**
+!src/slam_gmapping/**
