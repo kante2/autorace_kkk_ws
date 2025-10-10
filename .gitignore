@@ -11,3 +11,4 @@ __pycache__/
 *.swp
 *.tmp
 *.log!src/MORAI-ROS_morai_msgs/**
+!src/MORAI-ROS_morai_msgs/**
