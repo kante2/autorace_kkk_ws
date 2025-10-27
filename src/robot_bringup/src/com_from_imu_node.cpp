@@ -20,7 +20,7 @@ public:
     // 프레임 이름 (RViz에서 base_link 원점에 보이게)
     nh_.param<std::string>("base_frame", base_frame_, "base_link");
 
-    sub_ = nh_.subscribe("imu/data", 100, &ComFromImuNode::imuCb, this);
+    sub_ = nh_.subscribe("/imu", 100, &ComFromImuNode::imuCb, this);
 
     // COM 선형가속도(중력 제거) 전체
     pub_accel_ = nh_.advertise<geometry_msgs::AccelStamped>("com/accel", 50);
