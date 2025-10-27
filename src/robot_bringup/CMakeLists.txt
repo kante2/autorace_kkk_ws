@@ -23,7 +23,12 @@ add_executable(odom_tf_broadcaster src/odom_tf_broadcaster.cpp)
 target_link_libraries(odom_tf_broadcaster ${catkin_LIBRARIES})
 add_dependencies(odom_tf_broadcaster ${catkin_EXPORTED_TARGETS})
 
-install(TARGETS odom_tf_broadcaster
+# com_from_imu_node: processes IMU data to estimate center of mass state
+add_executable(com_from_imu_node src/com_from_imu_node.cpp)
+target_link_libraries(com_from_imu_node ${catkin_LIBRARIES})
+add_dependencies(com_from_imu_node ${catkin_EXPORTED_TARGETS})
+
+install(TARGETS odom_tf_broadcaster com_from_imu_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
