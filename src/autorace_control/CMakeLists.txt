@@ -24,8 +24,6 @@ include_directories(
 # target_compile_features(ego_path_recorder_csv_kante PRIVATE cxx_std_11)
 # target_link_libraries(ego_path_recorder_csv_kante ${catkin_LIBRARIES})
 
-
-
 add_executable(ego_path_recorder src/ego_path_recorder.cpp)
 target_compile_features(ego_path_recorder PRIVATE cxx_std_11)
 target_link_libraries(ego_path_recorder ${catkin_LIBRARIES})

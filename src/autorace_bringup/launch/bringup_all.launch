@@ -1,0 +1,40 @@
+<launch>
+  <!-- 공통 옵션 -->
+  <param name="use_sim_time" value="false"/>
+
+  <!-- 전체 네임스페이스를 깔끔하게 묶고 싶으면 주석 해제
+  <group ns="autorace">
+  -->
+
+    <!-- 1) motor bringup (vesc) -->
+    <!-- 필요시 포트/프레임아이디 등 인자 수정 -->
+    <include file="$(find vesc_driver)/launch/vesc_driver_node.launch">
+      <!-- 예시 인자(해당 launch에 인자가 있을 때만 적용됨) -->
+      <!-- <arg name="port" value="/dev/ttyACM0"/> -->
+      <!-- <arg name="frame_id" value="base_link"/> -->
+      <!-- <arg name="speed_to_erpm_gain" value="4614.0"/> -->
+      <!-- <arg name="steering_angle_to_servo_gain" value="1.0"/> -->
+    </include>
+
+    <!-- 2) camera bringup -->
+    <include file="$(find autorace_perception)/launch/camera_calibration.launch">
+      <!-- 예시 인자(해당 launch 파일 인자명에 맞게 조정)
+      <arg name="camera_name" value="usb_cam"/>
+      <arg name="image_width"  value="1280"/>
+      <arg name="image_height" value="720"/>
+      <arg name="camera_info_url" value="file:///home/USER/.ros/camera_info/usb_cam.yaml"/>
+      -->
+    </include>
+
+    <!-- 3) lidar bringup (RPLIDAR S1) -->
+    <include file="$(find rplidar_ros)/launch/rplidar_s1.launch">
+      <!-- 예시 인자: rplidar_s1.launch가 받는 이름에 맞춰 조정하세요 -->
+      <!-- <arg name="serial_port" value="/dev/ttyUSB0"/> -->
+      <!-- <arg name="serial_baudrate" value="256000"/> -->
+      <!-- <arg name="frame_id" value="laser"/> -->
+      <!-- <arg name="inverted" value="false"/> -->
+      <!-- <arg name="angle_compensate" value="true"/> -->
+    </include>
+
+  <!-- </group> -->
+</launch>
