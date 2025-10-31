@@ -49,7 +49,7 @@ def main():
 
     # --- 데모 시퀀스: 1) 전진 2) 좌로 조향 3) 정지 ---
     rospy.loginfo("Go forward")
-    ctrl.set_motor_speed(2000.0)  # 네가 쓰던 값
+    ctrl.set_motor_speed(2000.0)  # 
     ctrl.set_steering(0.5)        # 중립(직진 가정)
     rospy.sleep(1.5)              # ros::Duration(1.5).sleep()와 동일(ROS 시간 기준)
 
