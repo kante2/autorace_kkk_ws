@@ -16,6 +16,7 @@
   <build_depend>morai_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>roscpp</build_depend>
+  <build_depend>sensor_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
@@ -24,12 +25,14 @@
   <build_depend>usb_cam</build_depend>
   <build_depend>image_proc</build_depend>
   <build_depend>image_view</build_depend>
+  <build_depend>opencv2</build_depend>
 
   <!-- (선택) build_export: 헤더/라이브러리 내보낼 때 필요. 없어도 무방 -->
   <build_export_depend>geometry_msgs</build_export_depend>
   <build_export_depend>morai_msgs</build_export_depend>
   <build_export_depend>nav_msgs</build_export_depend>
   <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
   <build_export_depend>tf2</build_export_depend>
   <build_export_depend>tf2_geometry_msgs</build_export_depend>
@@ -40,6 +43,7 @@
   <exec_depend>morai_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>roscpp</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>tf2</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
@@ -47,6 +51,7 @@
   <exec_depend>usb_cam</exec_depend>
   <exec_depend>image_proc</exec_depend>
   <exec_depend>image_view</exec_depend>
+  <exec_depend>opencv2</exec_depend>
 
   <!-- 메시지 생성 안 쓰면 message_runtime은 넣지 않아도 됩니다.
        만약 add_message_files()/generate_messages()를 쓰면 아래도 추가:

@@ -1,11 +1,16 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.10)
 project(autorace_perception)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   morai_msgs
   nav_msgs
   roscpp
+  sensor_msgs
   std_msgs
   tf2
   tf2_geometry_msgs
@@ -15,12 +20,19 @@ find_package(catkin REQUIRED COMPONENTS
   image_view
 )
 
+find_package(OpenCV REQUIRED)
+
 catkin_package(
+  INCLUDE_DIRS
+    src/lane_detection/include
+  LIBRARIES
+    lane_detection_core
   CATKIN_DEPENDS
     geometry_msgs
     morai_msgs
     nav_msgs
     roscpp
+    sensor_msgs
     std_msgs
     tf2
     tf2_geometry_msgs
@@ -28,13 +40,64 @@ catkin_package(
     usb_cam
     image_proc
     image_view
+  DEPENDS
+    OpenCV
 )
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/lane_detection/include
 )
 
-## (선택) 노드가 있다면 여기에 추가
-# add_executable(my_node src/my_node.cpp)
-# target_link_libraries(my_node ${catkin_LIBRARIES})
-# add_dependencies(my_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_library(lane_detection_core
+  src/lane_detection/src/preprocessing.cpp
+  src/lane_detection/src/feature_extraction.cpp
+  src/lane_detection/src/sliding_window.cpp
+)
+target_link_libraries(lane_detection_core
+  PUBLIC
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+target_include_directories(lane_detection_core
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/lane_detection/include>
+    $<INSTALL_INTERFACE:include>
+)
+add_dependencies(lane_detection_core ${catkin_EXPORTED_TARGETS})
+
+add_executable(per_camera_node
+  src/lane_detection/src/per_camera.cpp
+)
+target_link_libraries(per_camera_node
+  PRIVATE
+    lane_detection_core
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+add_dependencies(per_camera_node ${catkin_EXPORTED_TARGETS})
+
+add_executable(per_camera_rotary_node
+  src/lane_detection/src/per_camera_rotary.cpp
+)
+target_link_libraries(per_camera_rotary_node
+  PRIVATE
+    lane_detection_core
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+add_dependencies(per_camera_rotary_node ${catkin_EXPORTED_TARGETS})
+
+install(TARGETS
+    lane_detection_core
+    per_camera_node
+    per_camera_rotary_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)
+
+install(DIRECTORY src/lane_detection/include/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
