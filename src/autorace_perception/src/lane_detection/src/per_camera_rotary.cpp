@@ -1,12 +1,13 @@
 #include <ros/ros.h>
-#include <sensor_msgs/CompressedImage.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
 #include <std_msgs/String.h>
 
+#include <cv_bridge/cv_bridge.h>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <cstdint>
 #include <sstream>
 
 #include "lane_detection/feature_extraction.hpp"
@@ -16,15 +17,17 @@ namespace lane_detection {
 
 namespace {
 
-cv::Mat decodeCompressedImage(const sensor_msgs::CompressedImageConstPtr& msg) {
+cv::Mat toCvMat(const sensor_msgs::ImageConstPtr& msg) {
     if (!msg) {
         return cv::Mat();
     }
-    cv::Mat buffer(1,
-                   static_cast<int>(msg->data.size()),
-                   CV_8UC1,
-                   const_cast<uint8_t*>(msg->data.data()));
-    return cv::imdecode(buffer, cv::IMREAD_COLOR);
+    try {
+        auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+        return cv_ptr->image;
+    } catch (const cv_bridge::Exception& e) {
+        ROS_ERROR_STREAM_THROTTLE(1.0, "cv_bridge exception: " << e.what());
+        return cv::Mat();
+    }
 }
 
 }  // namespace
@@ -37,7 +40,7 @@ public:
           feature_extractor_(),
           img_x_(0),
           img_y_(0) {
-        sub_ = nh_.subscribe("/image_jpeg/compressed", 1, &PerCameraRotaryNode::imageCallback, this);
+        sub_ = nh_.subscribe("/image_jpeg", 1, &PerCameraRotaryNode::imageCallback, this);
         pub_ = nh_.advertise<std_msgs::String>("/perception/camera/rotary", 1);
         ROS_INFO("PerCameraRotary C++ node started");
     }
@@ -47,11 +50,11 @@ public:
     }
 
 private:
-    void imageCallback(const sensor_msgs::CompressedImageConstPtr& msg) {
+    void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         try {
-            img_ = decodeCompressedImage(msg);
+            img_ = toCvMat(msg);
             if (img_.empty()) {
-                ROS_WARN_THROTTLE(1.0, "Failed to decode compressed image");
+                ROS_WARN_THROTTLE(1.0, "Failed to convert image");
                 return;
             }
             processing();

@@ -12,7 +12,6 @@
 
   <!-- Build deps -->
   <build_depend>geometry_msgs</build_depend>
-  <build_depend>message_generation</build_depend>
   <build_depend>morai_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>roscpp</build_depend>
@@ -55,11 +54,6 @@
   <exec_depend>image_proc</exec_depend>
   <exec_depend>image_view</exec_depend>
   <exec_depend>opencv2</exec_depend>
-
-  <!-- 메시지 생성 안 쓰면 message_runtime은 넣지 않아도 됩니다.
-       만약 add_message_files()/generate_messages()를 쓰면 아래도 추가:
-       <exec_depend>message_runtime</exec_depend>
-  -->
 
   <export/>
 </package>
