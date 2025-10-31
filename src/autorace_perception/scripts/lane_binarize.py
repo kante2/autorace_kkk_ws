@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
- 
+# lane_binarize.py
+
+# 압축 이미지(CompressedImage)를 
+# 구독→HSV로 변환→화이트 차선만 이진화
+# 시각화 :: →원본/HSV/이진영상 3장을 가로로 붙여서 표시하는 노드
+
 import rospy
 import cv2
 import numpy as np
