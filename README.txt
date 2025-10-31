@@ -3,6 +3,11 @@
 
 ros1 noetic
 
+
+# ------------install 해야 하는 것들 -------------
+sudo apt update
+sudo apt install -y ros-noetic-vision-msgs
+
 # 단축키
 # source -> ss
 echo "alias ss='source devel/setup.bash'" >> ~/.bashrc
