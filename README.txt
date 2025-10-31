@@ -3,6 +3,17 @@
 
 ros1 noetic
 
+# 단축키
+# source -> ss
+echo "alias ss='source devel/setup.bash'" >> ~/.bashrc
+source ~/.bashrc
+
+# catkin -> cc
+# catkin_make 를 cc로
+echo "alias cc='catkin_make'" >> ~/.bashrc
+source ~/.bashrc
+
+
 # slam_gmapping
 https://github.com/ros-perception/slam_gmapping.git
 

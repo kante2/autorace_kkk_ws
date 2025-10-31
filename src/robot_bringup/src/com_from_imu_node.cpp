@@ -109,7 +109,14 @@ private:
     geometry_msgs::Point p0, p1;
     p0.x = p0.y = p0.z = 0.0;          // base_link 원점
     // 벡터 방향 단위화 후 길이 len만큼
-    Eigen::Vector3d dir = (aB.norm() > 1e-6) ? (aB.normalized()*len) : Eigen::Vector3d::Zero();
+    // Eigen::Vector3d dir = (aB.norm() > 1e-6) ? (aB.normalized()*len) : Eigen::Vector3d::Zero(); // <- 이거 빌드 에러남 
+    Eigen::Vector3d dir; // <- 아래와 같이 수정함 - kante
+    if (aB.squaredNorm() > 1e-12) {
+        dir = aB.normalized() * len;   // len은 double이어야 합니다
+    } else {
+        dir.setZero();
+    }
+
     p1.x = dir.x(); p1.y = dir.y(); p1.z = dir.z();
     mk.points.clear(); mk.points.push_back(p0); mk.points.push_back(p1);
 
