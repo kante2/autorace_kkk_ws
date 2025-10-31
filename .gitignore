@@ -24,3 +24,4 @@ __pycache__/
 !src/AutoRace-2024/**
 !src/beginner_tutorials_answer/**
 !src/razor_imu_9dof/**
+!src/racecar/**
