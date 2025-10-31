@@ -1,59 +1,43 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>autorace_perception</name>
-  <version>0.0.0</version>
+  <version>0.0.1</version>
   <description>The autorace_perception package</description>
 
   <maintainer email="kante@todo.todo">kante</maintainer>
-  <license>TODO</license>
+  <license>BSD</license>
 
   <!-- Build tool -->
   <buildtool_depend>catkin</buildtool_depend>
 
-  <!-- Build deps -->
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>morai_msgs</build_depend>
-  <build_depend>nav_msgs</build_depend>
-  <build_depend>roscpp</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-  <build_depend>cv_bridge</build_depend>
-  <build_depend>std_msgs</build_depend>
-  <build_depend>tf2</build_depend>
-  <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>tf2_ros</build_depend>
-  <!-- 추가된 빌드 의존성 -->
-  <build_depend>usb_cam</build_depend>
-  <build_depend>image_proc</build_depend>
-  <build_depend>image_view</build_depend>
-  <build_depend>opencv2</build_depend>
+  <!-- Core deps -->
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
 
-  <!-- (선택) build_export: 헤더/라이브러리 내보낼 때 필요. 없어도 무방 -->
-  <build_export_depend>geometry_msgs</build_export_depend>
-  <build_export_depend>morai_msgs</build_export_depend>
-  <build_export_depend>nav_msgs</build_export_depend>
-  <build_export_depend>roscpp</build_export_depend>
-  <build_export_depend>sensor_msgs</build_export_depend>
-  <build_export_depend>cv_bridge</build_export_depend>
-  <build_export_depend>std_msgs</build_export_depend>
-  <build_export_depend>tf2</build_export_depend>
-  <build_export_depend>tf2_geometry_msgs</build_export_depend>
-  <build_export_depend>tf2_ros</build_export_depend>
+  <!-- Image/vision -->
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  <depend>image_proc</depend>
+  <depend>image_view</depend>
+  <!-- OpenCV: 일부 배포판에서 opencv2로 제공되므로 유지 (시스템 OpenCV는 find_package(OpenCV)로 링크) -->
+  <depend>opencv2</depend>
 
-  <!-- Run-time deps -->
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>morai_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>roscpp</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
-  <exec_depend>tf2</exec_depend>
-  <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>usb_cam</exec_depend>
-  <exec_depend>image_proc</exec_depend>
-  <exec_depend>image_view</exec_depend>
-  <exec_depend>opencv2</exec_depend>
+  <!-- TF2 -->
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_sensor_msgs</depend>
+
+  <!-- PCL (★ 에러 해결을 위해 추가) -->
+  <depend>pcl_ros</depend>
+  <depend>pcl_conversions</depend>
+
+  <!-- Devices / 기타 -->
+  <depend>usb_cam</depend>
+  <depend>morai_msgs</depend>
 
   <export/>
 </package>
