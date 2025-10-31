@@ -70,7 +70,7 @@ public:
           check_timer_("per_camera_node"),
           img_x_(0),
           img_y_(0) {
-        sub_ = nh_.subscribe("/usb_cam/image_raw", 1, &PerCameraNode::imageCallback, this);
+        sub_ = nh_.subscribe("/usb_cam/image_raw/compressed", 1, &PerCameraNode::imageCallback, this);
         pub_ = nh_.advertise<std_msgs::String>("/perception/camera", 1);
         ROS_INFO("PerCamera C++ node started");
     }
