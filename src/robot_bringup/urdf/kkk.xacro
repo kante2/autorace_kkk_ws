@@ -1,0 +1,239 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="kkk" >
+
+    <!--MACROS-->
+    <xacro:include filename="macros.xacro"/>
+
+    <!-- COLOR-->
+    <material name = "white">
+        <color rgba = "1 1 1 1"/>
+    </material>
+
+    <material name = "blue">
+        <color rgba = "0 0 1 1"/>
+    </material>
+
+    <material name="black">
+        <color rgba="0 0 0 1"/>
+    </material>
+
+    <material name="red">
+        <color rgba="1 0 0 1"/>
+    </material>
+
+    <!--BASE LINK-->
+    <link name = "base_link">
+    </link>
+
+    <!--BODY LINK-->
+    <joint name = "body_joint" type = "fixed">
+        <parent link = "base_link"/>
+        <child link = "body" />
+        <origin xyz = "-0.1348 0 0"/>
+    </joint>
+
+    <link name = "body">
+        <visual>
+            <origin xyz = "0.0865 0 0"/>
+            <geometry>
+                <box size = "0.173 0.26 0.25"/>
+            </geometry>
+            <material name = "white"/>
+        </visual>
+        <collision>
+            <origin xyz = "0.0865 0 0"/>
+            <geometry>
+                <box size = "0.173 0.26 0.25"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="0.4383" x="0.173" y="0.26" z="0.25">
+            <origin xyz="0.0865 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <!-- 앞바퀴용 조향 링크 두 개 추가 -->
+    <link name="front_left_steer_link">
+        <visual>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="0.02" x="0.01" y="0.01" z="0.01">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <link name="front_right_steer_link">
+        <visual>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_box mass="0.02" x="0.01" y="0.01" z="0.01">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <!-- 앞바퀴 조향 조인트: yaw 축, ±70deg = ±1.2217rad -->
+    <joint name="front_left_steer_joint" type="revolute">
+        <parent link="base_link"/>
+        <child  link="front_left_steer_link"/>
+        <origin xyz="0.1252 0.0865 0.025" rpy="0 0 0"/>   <!-- 원래 앞바퀴 위치와 같게 -->
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.2217" upper="1.2217" effort="30" velocity="2.0"/>
+    </joint>
+
+    <joint name="front_right_steer_joint" type="revolute">
+        <parent link="base_link"/>
+        <child  link="front_right_steer_link"/>
+        <origin xyz="0.1252 -0.0865 0.025" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.2217" upper="1.2217" effort="30" velocity="2.0"/>
+    </joint>
+
+    <!-- FRONT LEFT WHEEL -->
+    <xacro:wheel_link name="front_left_wheel" parent_link="front_left_steer_link"
+                  xyz="0 0 0" rpy="-${pi/2} 0 0" direction="1"/>
+
+    <gazebo reference = "front_left_wheel">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!-- FRONT RIGHT WHEEL -->
+    <xacro:wheel_link name="front_right_wheel" parent_link="front_right_steer_link"
+                  xyz="0 0 0" rpy="${pi/2} 0 0" direction="-1"/>
+    
+    <gazebo reference = "front_right_wheel">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!-- REAR LEFT WHEEL -->
+    <xacro:wheel_link name="rear_left_wheel" parent_link="base_link"
+                  xyz="-0.1348 0.0865 0.025" rpy="-${pi/2} 0 0" direction="1"/>
+
+    <gazebo reference = "rear_left_wheel">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!-- REAR RIGHT WHEEL -->
+    <xacro:wheel_link name="rear_right_wheel" parent_link="base_link"
+                  xyz="-0.1348 -0.0865 0.025" rpy="${pi/2} 0 0" direction="-1"/>
+
+    <gazebo reference = "rear_right_wheel">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!-- CASTER WHEEL LINK -->
+    <joint name="caster_wheel_joint" type="fixed">
+        <parent link="body"/>
+        <child link="caster_wheel"/>
+        <origin xyz="0.03 0 0"/>
+    </joint>
+
+    <link name="caster_wheel">
+        <visual>
+            <geometry>
+                <sphere radius = "0.03"/>
+            </geometry>
+            <material name = "black"/>
+        </visual>
+        <collision>
+            <geometry>
+                <sphere radius = "0.03"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_sphere mass="0.1" radius="0.03">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_sphere>
+    </link>
+
+    <gazebo reference = "caster_wheel">
+        <material>Gazebo/Blue</material>
+
+        <mu1 value="0.001"/>
+        <mu2 value="0.001"/>
+    </gazebo>
+
+    <!--LiDAR-->
+    <joint name = "laser_joint" type = "fixed">
+        <parent link = "base_link"/>
+        <child link = "laser"/>
+        <origin xyz = "0.025 0 0.22" rpy="0 0 3.1415926525"/>
+    </joint>
+
+    <link name="laser">
+        <visual>
+            <geometry>
+                <cylinder radius="0.03" length="0.03"/>
+            </geometry>
+            <material name = "red"/>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder radius="0.03" length="0.03"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <!-- CAMERA -->
+    <joint name = "camera_joint" type = "fixed">
+        <parent link = "base_link"/>
+        <child link = "camera_link"/>
+        <origin xyz = "0.16 0 0.13" rpy="0 0 0"/>
+    </joint>
+
+    <link name = "camera_link">
+        <visual>
+            <geometry>
+                <box size = "0.01 0.03 0.03"/>
+            </geometry>
+            <material name = "red"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size = "0.01 0.03 0.03"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <joint name = "camera_optical_joint" type = "fixed">
+        <parent link = "camera_link"/>
+        <child link = "camera_link_optical"/>
+        <origin xyz = "0 0 0" rpy = "${-pi/2} 0 ${pi/2}"/>
+    </joint>
+
+    <link name = "camera_link_optical">
+    </link>
+
+    <!-- IMU -->
+    <joint name = "imu_joint" type = "fixed">
+        <parent link = "base_link"/>
+        <child link = "imu_link"/>
+        <origin xyz = "0.16 0 0.09" rpy = "0 0 0"/>
+    </joint>
+
+    <link name = "imu_link">
+        <visual>
+            <geometry>
+                <box size = "0.03 0.03 0.01"/>
+            </geometry>
+            <material name = "blue"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size = "0.03 0.01 0.03"/>
+            </geometry>
+        </collision>
+    </link>
+ 
+</robot>

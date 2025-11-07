@@ -1,5 +1,0 @@
-<?xml version="1.0"?>
-<robot name="minimal_robot">
-  <!-- Minimal URDF placeholder: base_link only. Replace with your real URDF/Xacro. -->
-  <link name="base_link"/>
-</robot>
