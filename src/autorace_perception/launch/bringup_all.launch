@@ -36,5 +36,8 @@
       <!-- <arg name="angle_compensate" value="true"/> -->
     </include>
 
+    <!--4) imu bringup -->
+    <include file="$(find razor_imu_9dof)/launch/razor-pub.launch">
+    </include>
   <!-- </group> -->
 </launch>

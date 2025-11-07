@@ -26,3 +26,4 @@ __pycache__/
 !src/razor_imu_9dof/**
 !src/racecar/**
 !src/slam_toolbox/**
+!src/robot_localization/**

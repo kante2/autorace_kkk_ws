@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright (c) 2012, Tang Tiong Yew
 # All rights reserved.
@@ -32,7 +32,7 @@ import serial
 import string
 import math
 import sys
-
+sys.path.insert(0, "/opt/ros/noetic/lib/python3/dist-packages")
 #from time import time
 from sensor_msgs.msg import Imu
 from tf.transformations import quaternion_from_euler

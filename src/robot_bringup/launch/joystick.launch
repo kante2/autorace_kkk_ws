@@ -1,38 +1,6 @@
-<!-- file: k3_description.launch -->
+<!-- file: /root/autorace_kkk_ws/src/robot_bringup/launch/wheel_odom.launch -->
 <launch>
-  <!-- 인자 -->
-  <arg name="model"              default="$(find robot_bringup)/urdf/kkk.xacro"/>
-  <arg name="publish_frequency"  default="50.0"/>
-  <arg name="use_gui"            default="false"/>
-
-  <!-- xacro → robot_description (inorder 옵션으로 안전하게) -->
-  <param name="robot_description"
-         command="$(find xacro)/xacro --inorder $(arg model)"/>
-
-  <!-- robot_state_publisher: TF 퍼블리시 -->
-  <node pkg="robot_state_publisher" type="robot_state_publisher"
-        name="robot_state_publisher" output="screen">
-    <param name="publish_frequency" value="$(arg publish_frequency)"/>
+  <!-- wheel_odom 노드 시작 -->
+  <node pkg="robot_bringup" type="joystick.py" name="joystick" output="screen">
   </node>
-
-  <!-- joint_state_publisher: 가변 조인트 초기값이라도 퍼블리시 -->
-  <group unless="$(arg use_gui)">
-    <node pkg="joint_state_publisher" type="joint_state_publisher"
-          name="joint_state_publisher" output="screen">
-      <param name="rate" value="$(arg publish_frequency)"/>
-      <param name="use_gui" value="false"/>
-    </node>
-  </group>
-
-  <!-- 필요 시 GUI 슬라이더 -->
-  <group if="$(arg use_gui)">
-    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui"
-          name="joint_state_publisher_gui" output="screen"/>
-  </group>
-
-  <!-- 디버그용 고정 TF: 필요할 때만 잠깐 켜서 프레임 확인 -->
-  <!--
-  <node pkg="tf" type="static_transform_publisher" name="world_to_base_link"
-        args="0 0 0 0 0 0 world base_link 100"/>
-  -->
 </launch>
