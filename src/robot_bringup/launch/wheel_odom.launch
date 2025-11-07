@@ -4,7 +4,7 @@
   <arg name="config_file" default="$(find robot_bringup)/config/wheel_odom.yaml"/>
 
   <!-- wheel_odom 노드 시작 -->
-  <node pkg="robot_bringup" type="wheel_odom.py" name="wheel_odom" output="screen">
+  <node pkg="robot_bringup" type="wheel_odom_node.py" name="wheel_odom" output="screen">
     <!-- YAML을 노드의 private 네임스페이스(~)로 로드 -->
     <rosparam command="load" file="$(arg config_file)" ns="~"/>
 
