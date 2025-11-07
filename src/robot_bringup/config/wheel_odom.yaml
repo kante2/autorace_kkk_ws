@@ -4,7 +4,7 @@ odom_frame: odom
 base_frame: base_link
 odom_topic: /wheel_odom
 use_imu_heading: true
-imu_topic: /imu/data
+imu_topic: /imu
 rpm_scale: 0.073
 servo_center: 0.57165
 publish_tf: true          # (현재 노드에서 직접 쓰진 않음; 필요하면 코드에 반영)
