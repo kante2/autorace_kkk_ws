@@ -65,8 +65,10 @@ class WheelOdomNode:
         self.yaw = 0.0
 
         self.yaw_imu = None
-        self.imu_prev_stamp = None
+        self.imu_prev_stamp = None   # 직전 IMU timestamp (yaw rate 계산용)
+        self.imu_last_stamp = None   # 최신 IMU timestamp (staleness 체크용)
         self.wz_imu = 0.0
+        self.wz_imu_valid = False
 
         self.motor_cmd = 0.0
         self.servo_pos = self.servo_center
@@ -91,19 +93,26 @@ class WheelOdomNode:
     def cb_imu(self, msg: Imu):
         yaw_now = yaw_from_quat(msg.orientation)
 
-        # IMU 고유 timestamp 사용 (없으면 now)
+        # Razor IMU 9DoF는 header.stamp와 자이로 z를 제공하므로 적극 활용
         stamp = msg.header.stamp if msg.header.stamp and msg.header.stamp.to_sec() > 0 else rospy.Time.now()
 
-        if (self.yaw_imu is not None) and (self.imu_prev_stamp is not None):
-            # unwrap된 dyaw
+        gyro_z = msg.angular_velocity.z
+        if math.isfinite(gyro_z):
+            self.wz_imu = gyro_z
+            self.wz_imu_valid = True
+
+        prev_stamp = self.imu_prev_stamp
+        if (self.yaw_imu is not None) and (prev_stamp is not None):
             dyaw = math.atan2(math.sin(yaw_now - self.yaw_imu),
                               math.cos(yaw_now - self.yaw_imu))
-            dt = (stamp - self.imu_prev_stamp).to_sec()
-            if 1e-6 < dt < 1.0:
+            dt = (stamp - prev_stamp).to_sec()
+            if 1e-4 < dt < 1.0:
                 self.wz_imu = dyaw / dt
+                self.wz_imu_valid = True
 
         self.yaw_imu = yaw_now
         self.imu_prev_stamp = stamp
+        self.imu_last_stamp = stamp
 
     def servo_to_delta(self):
         """
@@ -158,14 +167,27 @@ class WheelOdomNode:
         delta = self.servo_to_delta()
 
         # 3) 요 레이트(키네마틱)
-        omega_kin = v_body * math.tan(delta) / self.wheel_base
+        if abs(self.wheel_base) > 1e-6:
+            omega_kin = v_body * math.tan(delta) / self.wheel_base
+        else:
+            omega_kin = 0.0
 
         # yaw 업데이트: IMU가 있으면 우선 적용, 없으면 적분
+        imu_recent = False
+        if self.imu_last_stamp is not None:
+            imu_recent = 0.0 <= (now - self.imu_last_stamp).to_sec() < self.imu_drop_fallback_sec
+
+        use_imu_heading_now = self.use_imu_heading and imu_recent and (self.yaw_imu is not None)
+        wz_used = omega_kin
+
         if dt > 0.0:
-            if self.use_imu_heading and (self.yaw_imu is not None):
+            if use_imu_heading_now:
                 self.yaw = self.yaw_imu
+                if self.wz_imu_valid:
+                    wz_used = self.wz_imu
             else:
                 self.yaw += omega_kin * dt
+                self.wz_imu_valid = False
 
             # yaw 정규화(±pi)
             self.yaw = math.atan2(math.sin(self.yaw), math.cos(self.yaw))
@@ -192,7 +214,7 @@ class WheelOdomNode:
 
         odom.twist.twist.linear.x = v_body
         odom.twist.twist.linear.y = 0.0
-        #odom.twist.twist.angular.z = wz_used
+        odom.twist.twist.angular.z = wz_used
 
         # covariance: z/roll/pitch는 관측 안함 → 큰 값
         odom.pose.covariance = [
@@ -224,7 +246,7 @@ class WheelOdomNode:
         )
 
         self.last_time = now
-        print(f"yaw:{self.yaw:.3f} rad, omega_kin:{omega_kin:.3f} rad/s, v:{v_body:.3f} m/s, delta:{math.degrees(delta):.1f} deg")
+        print(f"yaw:{self.yaw:.3f} rad, wz:{wz_used:.3f} rad/s, omega_kin:{omega_kin:.3f} rad/s, v:{v_body:.3f} m/s, delta:{math.degrees(delta):.1f} deg")
 
     def run(self):
         rate_hz = rospy.get_param('~rate', 30.0)
