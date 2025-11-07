@@ -1,15 +1,19 @@
-<!-- file: /root/autorace_kkk_ws/src/robot_bringup/launch/wheel_odom.launch -->
+<!-- file: odometry_launch.launch -->
 <launch>
-  <!-- YAML 경로를 인자로 받아서 필요할 때 바꾸기 쉽게 -->
-  <arg name="config_file" default="$(find robot_bringup)/config/wheel_odom.yaml"/>
+  <!-- ROS1에서는 use_sim_time 전역 파라미터로 별도 설정 -->
+  <param name="/use_sim_time" value="false"/>
 
-  <!-- wheel_odom 노드 시작 -->
-  <node pkg="robot_bringup" type="wheel_odom_node.py" name="wheel_odom" output="screen">
-    <!-- YAML을 노드의 private 네임스페이스(~)로 로드 -->
-    <rosparam command="load" file="$(arg config_file)" ns="~"/>
+  <!-- wheel_odom 파라미터 로드 -->
+  <rosparam file="$(find robot_bringup)/config/wheel_odom.yaml" command="load"/>
 
-    <!-- 필요하면 토픽 리매핑 (예시) -->
-    <!-- <remap from="/commands/motor/speed" to="/motor_cmd"/> -->
-    <!-- <remap from="/commands/servo/position" to="/steer_cmd"/> -->
-  </node>
+  <!-- wheel_odom 노드 실행 -->
+  <node pkg="robot_bringup" type="wheel_odom_node.py" name="wheel_odom" output="screen"/>
+
+  <!-- EKF 파라미터 로드 -->
+  <rosparam file="$(find robot_bringup)/config/ekf_wheel_imu.yaml" command="load"/>
+
+  <!-- robot_localization EKF 노드 실행 -->
+  <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se_odom" output="screen"/>
+
+  <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom_tf" args="2.101464 18.425203 0 0 0 0 1 map odom" /> -->
 </launch>

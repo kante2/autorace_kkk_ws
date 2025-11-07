@@ -7,9 +7,10 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
 import tf
-from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from tf.transformations import euler_from_quaternion
 
 def yaw_from_quat(q):
+    # q: geometry_msgs/Quaternion
     quat_list = [q.x, q.y, q.z, q.w]
     (_, _, yaw) = euler_from_quaternion(quat_list)
     return yaw
@@ -20,25 +21,43 @@ class WheelOdomNode:
         rospy.loginfo('wheel_odom node started [ROS1] (motor/servo inputs)')
 
         # === Topics & frames ===
-        self.imu_topic   = rospy.get_param('~imu_topic',  '/imu')        # 런치에서 재정의 권장: /imu/data_centered
+        self.imu_topic   = rospy.get_param('~imu_topic',  '/imu')
         self.odom_topic  = rospy.get_param('~odom_topic', '/odom')
         self.odom_frame  = rospy.get_param('~odom_frame', 'odom')
         self.base_frame  = rospy.get_param('~base_frame', 'base_link')
 
         # === Robot params ===
-        self.wheel_radius = rospy.get_param('~wheel_radius', 0.034)      # [m]
-        self.wheel_base   = rospy.get_param('~wheel_base',   0.26)       # [m]
+        self.wheel_radius = rospy.get_param('~wheel_radius', 0.034)   # [m]
+        self.wheel_base   = rospy.get_param('~wheel_base',   0.26)    # [m]
 
-        # ✅ RPM 기반: motor_cmd * rpm_per_cmd -> RPM
-        # 예) 1000 명령 -> 75 RPM  ⇒ rpm_per_cmd = 0.075
-        self.rpm_per_cmd  = rospy.get_param('~rpm_per_cmd', 0.075)       # [RPM / command]
+        # 속도 스케일: "명령 1 → RPM"을 기본 가정 (기존 혼동 교정)
+        # 과거 파라미터 호환을 위해 ~rpm_scale도 받아들이되, 변수명은 의미가 명확한 rpm_per_cmd로 사용
+        self.rpm_per_cmd = rospy.get_param('~rpm_per_cmd',
+                             rospy.get_param('~rpm_scale', 0.073))  # [RPM per command]
 
-        # 서보 중앙값(0~1), 서보→조향각 변환 gain [rad / servo_unit]
-        self.servo_center = rospy.get_param('~servo_center', 0.571)
-        self.steer_gain   = rospy.get_param('~steer_gain',   1.2)        # 튜닝 필요
+        # 서보 중앙값/범위
+        self.servo_center = rospy.get_param('~servo_center', 0.57165)
+        self.servo_min    = rospy.get_param('~servo_min',    0.0)
+        self.servo_max    = rospy.get_param('~servo_max',    1.0)
+
+        # 비대칭 조향각 제한(도 단위 입력 → 라디안 변환)
+        # 기본값을 질문에서 주신 조건으로 둠: left=25°, right=20°
+        steer_left_deg  = rospy.get_param('~steer_left_limit_deg',  25.0)
+        steer_right_deg = rospy.get_param('~steer_right_limit_deg', 20.0)
+        self.steer_left_limit  = math.radians(steer_left_deg)   # 좌회전 최대 +25°
+        self.steer_right_limit = math.radians(steer_right_deg)  # 우회전 최대  20°
+
+        # 비대칭 맵 사용 여부: 중앙이 min/max 사이에 있어야 정상 동작
+        self.use_asym_steer = True
+        if not (self.servo_min < self.servo_center < self.servo_max):
+            rospy.logwarn('servo_min < servo_center < servo_max 조건이 깨졌습니다. 값을 재확인하세요.')
+
+        # 대칭 맵이 필요할 때만 사용(백업용 파라미터)
+        self.steer_gain = rospy.get_param('~steer_gain', 1.2)  # 미사용 권장(비대칭 맵 사용중)
 
         # IMU 사용 여부
         self.use_imu_heading = rospy.get_param('~use_imu_heading', True)
+        self.imu_drop_fallback_sec = rospy.get_param('~imu_drop_fallback_sec', 0.2)
 
         # === States ===
         self.x = 0.0
@@ -46,10 +65,10 @@ class WheelOdomNode:
         self.yaw = 0.0
 
         self.yaw_imu = None
-        self.last_imu_stamp = None
+        self.imu_prev_stamp = None
         self.wz_imu = 0.0
 
-        self.motor_cmd = 0.0    # 무차원 명령
+        self.motor_cmd = 0.0
         self.servo_pos = self.servo_center
 
         self.last_time = rospy.Time.now()
@@ -71,52 +90,89 @@ class WheelOdomNode:
 
     def cb_imu(self, msg: Imu):
         yaw_now = yaw_from_quat(msg.orientation)
-        if self.yaw_imu is not None and self.last_imu_stamp is not None:
-            # ✅ IMU 자체 타임스탬프 기준으로 dt 계산
-            dt = (msg.header.stamp - self.last_imu_stamp).to_sec()
+
+        # IMU 고유 timestamp 사용 (없으면 now)
+        stamp = msg.header.stamp if msg.header.stamp and msg.header.stamp.to_sec() > 0 else rospy.Time.now()
+
+        if (self.yaw_imu is not None) and (self.imu_prev_stamp is not None):
+            # unwrap된 dyaw
+            dyaw = math.atan2(math.sin(yaw_now - self.yaw_imu),
+                              math.cos(yaw_now - self.yaw_imu))
+            dt = (stamp - self.imu_prev_stamp).to_sec()
             if 1e-6 < dt < 1.0:
-                dyaw = math.atan2(math.sin(yaw_now - self.yaw_imu),
-                                  math.cos(yaw_now - self.yaw_imu))
                 self.wz_imu = dyaw / dt
+
         self.yaw_imu = yaw_now
-        self.last_imu_stamp = msg.header.stamp
+        self.imu_prev_stamp = stamp
+
+    def servo_to_delta(self):
+        """
+        servo 명령 → 조향각(rad).
+        주어진 실제 기구 조건:
+          servo=0.0  → 좌최대 +25°
+          servo=1.0  → 우최대 -20°   (부호 주의: 우회전은 음수로 처리)
+          servo=0.57165 부근 → 0°
+        """
+        servo = min(max(self.servo_pos, self.servo_min), self.servo_max)
+
+        if self.use_asym_steer:
+            if servo <= self.servo_center:
+                # 좌측 구간: center(0) → min(+25°)
+                span = max(self.servo_center - self.servo_min, 1e-9)
+                ratio = (self.servo_center - servo) / span  # 0~1
+                delta = ratio * self.steer_left_limit       # +[0..left_limit]
+            else:
+                # 우측 구간: center(0) → max(-20°)
+                span = max(self.servo_max - self.servo_center, 1e-9)
+                ratio = (servo - self.servo_center) / span  # 0~1
+                delta = - ratio * self.steer_right_limit    # -[0..right_limit]
+        else:
+            # 대칭 선형: 중앙 기준 좌(+), 우(-)로 가정
+            delta = self.steer_gain * (servo - self.servo_center)
+
+        # 안전 클램프(수치 오차 대비)
+        delta = max(min(delta, self.steer_left_limit), -self.steer_right_limit)
+        return delta
+
+    def compute_v_body(self):
+        """
+        선속도 v [m/s] 계산.
+        motor_cmd * (RPM/command) * (2πR) / 60
+        """
+        rpm = self.motor_cmd * self.rpm_per_cmd
+        v = rpm * (2.0 * math.pi * self.wheel_radius) / 60.0
+        return v
 
     # --- Main update ---
     def step(self):
         now = rospy.Time.now()
         dt = (now - self.last_time).to_sec()
         if dt <= 0.0 or dt > 1.0:
-            # 비정상 시간 간격은 무시
             self.last_time = now
             return
 
-        # 1) 선속도 v [m/s]
-        #    RPM = motor_cmd * rpm_per_cmd
-        #    v = RPM * (2π/60) * r
-        rpm = self.motor_cmd * self.rpm_per_cmd
-        v_body = (rpm * (2.0 * math.pi / 60.0)) * self.wheel_radius  # [m/s]
+        # 1) 선속도 (몸체 좌표계 x축)
+        v_body = self.compute_v_body()  # [m/s]
 
         # 2) 조향각(라디안)
-        delta_servo = self.servo_pos - self.servo_center
-        delta = self.steer_gain * delta_servo
+        delta = self.servo_to_delta()
 
         # 3) 요 레이트(키네마틱)
-        omega_kin = 0.0
-        if abs(self.wheel_base) > 1e-6:
-            omega_kin = v_body * math.tan(delta) / self.wheel_base
+        omega_kin = v_body * math.tan(delta) / self.wheel_base
 
-        # 4) yaw 업데이트: IMU 우선 사용
-        if self.use_imu_heading and (self.yaw_imu is not None):
-            self.yaw = self.yaw_imu
-            wz_used = self.wz_imu
-        else:
-            self.yaw = math.atan2(math.sin(self.yaw + omega_kin * dt),
-                                  math.cos(self.yaw + omega_kin * dt))
-            wz_used = omega_kin
+        # yaw 업데이트: IMU가 있으면 우선 적용, 없으면 적분
+        if dt > 0.0:
+            if self.use_imu_heading and (self.yaw_imu is not None):
+                self.yaw = self.yaw_imu
+            else:
+                self.yaw += omega_kin * dt
 
-        # 5) 위치 적분 (월드/odom 좌표계)
-        self.x += v_body * math.cos(self.yaw) * dt
-        self.y += v_body * math.sin(self.yaw) * dt
+            # yaw 정규화(±pi)
+            self.yaw = math.atan2(math.sin(self.yaw), math.cos(self.yaw))
+
+            # 바디 전진을 월드(odom)로 투영
+            self.x += v_body * math.cos(self.yaw) * dt
+            self.y += v_body * math.sin(self.yaw) * dt       
 
         # 6) Odometry 메시지
         odom = Odometry()
@@ -128,17 +184,17 @@ class WheelOdomNode:
         odom.pose.pose.position.y = self.y
         odom.pose.pose.position.z = 0.0
 
-        q = quaternion_from_euler(0.0, 0.0, self.yaw)
-        odom.pose.pose.orientation.x = q[0]
-        odom.pose.pose.orientation.y = q[1]
-        odom.pose.pose.orientation.z = q[2]
-        odom.pose.pose.orientation.w = q[3]
+        # 평면 yaw만 반영한 쿼터니언
+        odom.pose.pose.orientation.x = 0.0
+        odom.pose.pose.orientation.y = 0.0
+        odom.pose.pose.orientation.z = math.sin(self.yaw * 0.5)
+        odom.pose.pose.orientation.w = math.cos(self.yaw * 0.5)
 
         odom.twist.twist.linear.x = v_body
         odom.twist.twist.linear.y = 0.0
-        odom.twist.twist.angular.z = wz_used
+        #odom.twist.twist.angular.z = wz_used
 
-        # (예시) covariance: z/roll/pitch는 관측 안함 → 큰 값
+        # covariance: z/roll/pitch는 관측 안함 → 큰 값
         odom.pose.covariance = [
             0.05, 0,    0,    0,    0,    0,
             0,    0.05, 0,    0,    0,    0,
@@ -161,13 +217,14 @@ class WheelOdomNode:
         # 7) TF (odom -> base_link)
         self.odom_broadcaster.sendTransform(
             (self.x, self.y, 0.0),
-            q,
+            (0.0, 0.0, math.sin(self.yaw * 0.5), math.cos(self.yaw * 0.5)),
             now,
             self.base_frame,
             self.odom_frame
         )
 
         self.last_time = now
+        print(f"yaw:{self.yaw:.3f} rad, omega_kin:{omega_kin:.3f} rad/s, v:{v_body:.3f} m/s, delta:{math.degrees(delta):.1f} deg")
 
     def run(self):
         rate_hz = rospy.get_param('~rate', 30.0)
