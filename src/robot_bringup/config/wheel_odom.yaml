@@ -4,11 +4,10 @@ odom_frame: odom
 base_frame: base_link
 odom_topic: /wheel_odom
 use_imu_heading: true
-imu_topic: /imu/data_centered
+imu_topic: /imu
 rpm_scale: 0.075
 servo_center: 0.5
-max_steer_rad: 0.5        # (현재 노드에서 직접 쓰진 않지만 기록용/확장용)
-publish_tf: false          # (현재 노드에서 직접 쓰진 않음; 필요하면 코드에 반영)
+publish_tf: false          # 
 # 옵션: 노드 내부 파라미터
 rate: 30.0
 steer_gain: 1.2            # 서보→라디안 보정 게인 (튜닝)
