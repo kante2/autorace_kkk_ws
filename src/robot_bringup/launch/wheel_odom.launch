@@ -1,0 +1,15 @@
+<!-- file: /root/autorace_kkk_ws/src/robot_bringup/launch/wheel_odom.launch -->
+<launch>
+  <!-- YAML 경로를 인자로 받아서 필요할 때 바꾸기 쉽게 -->
+  <arg name="config_file" default="$(find robot_bringup)/config/wheel_odom.yaml"/>
+
+  <!-- wheel_odom 노드 시작 -->
+  <node pkg="robot_bringup" type="wheel_odom.py" name="wheel_odom" output="screen">
+    <!-- YAML을 노드의 private 네임스페이스(~)로 로드 -->
+    <rosparam command="load" file="$(arg config_file)" ns="~"/>
+
+    <!-- 필요하면 토픽 리매핑 (예시) -->
+    <!-- <remap from="/commands/motor/speed" to="/motor_cmd"/> -->
+    <!-- <remap from="/commands/servo/position" to="/steer_cmd"/> -->
+  </node>
+</launch>
