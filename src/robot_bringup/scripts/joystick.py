@@ -63,7 +63,7 @@ class JoyToCmd(object):
         # Steering: map [-1,1] -> [0,1] with center 0.5
         raw_steer = axes[self.steer_axis]
         raw_steer = 0.0 if abs(raw_steer) < self.deadzone else raw_steer
-        servo = (1.0 - raw_steer) * 0.5  # 1->0.0, 0->0.5, -1->1.0
+        servo = (1.0 - raw_steer) * 0.57165  # 1->0.0, 0->0.5, -1->1.0
         self.last_servo = clamp(servo, 0.0, 1.0)
 
     def on_timer(self, _evt):

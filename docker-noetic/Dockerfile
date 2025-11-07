@@ -33,7 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # --- MORAI에서 자주 쓰는 ROS 패키지 ---
     # 이미지/카메라 파이프라인
     ros-noetic-vision-opencv ros-noetic-cv-bridge ros-noetic-image-transport \
-    ros-noetic-image-geometry ros-noetic-camera-info-manager \
+    ros-noetic-image-geometry ros-noetic-camera-info-manager ros-noetic-serial \
+    ros-noetic-vision-msgs \
     # 주행/제어 메시지
     ros-noetic-ackermann-msgs \
     # 유틸 & 디버깅
