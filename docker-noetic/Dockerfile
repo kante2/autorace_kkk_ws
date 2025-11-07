@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # ssh
     tzdata locales curl gnupg2 lsb-release ca-certificates \
     iproute2 net-tools iputils-ping netcat \
-    openssh-client wget vim less git nano pip \
+    openssh-client openssh-server wget vim less git nano pip \
     mesa-utils libgl1-mesa-glx libglu1-mesa \
  && rm -rf /var/lib/apt/lists/*
 
@@ -57,3 +57,6 @@ RUN python3 -m pip install --no-cache-dir \
 
 # ROS setup + nice defaults
 RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc 
+
+
+WORKDIR /root
