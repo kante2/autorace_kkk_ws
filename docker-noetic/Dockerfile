@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-image-geometry ros-noetic-camera-info-manager ros-noetic-serial \
     ros-noetic-vision-msgs \
     # 주행/제어 메시지
+    ros-noetic-sparse-bundle-adjustment ros-noetic-map-server \ 
     ros-noetic-ackermann-msgs \
     # 유틸 & 디버깅
     ros-noetic-rviz ros-noetic-rqt ros-noetic-rqt-graph ros-noetic-rqt-plot \
