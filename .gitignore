@@ -25,3 +25,4 @@ __pycache__/
 !src/beginner_tutorials_answer/**
 !src/razor_imu_9dof/**
 !src/racecar/**
+!src/slam_toolbox/**
