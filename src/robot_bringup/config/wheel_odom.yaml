@@ -7,6 +7,7 @@ use_imu_heading: true
 imu_topic: /imu
 rpm_scale: 0.073
 servo_center: 0.57165
-publish_tf: false          
+publish_tf: false          # --> ekf가 tf을 쏘도록 변경!
+# 옵션: 노드 내부 파라미터
 rate: 30.0
 steer_gain: 1.2            # 서보→라디안 보정 게인 (튜닝)

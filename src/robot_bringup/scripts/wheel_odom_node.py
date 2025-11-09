@@ -214,7 +214,7 @@ class WheelOdomNode:
 
         odom.twist.twist.linear.x = v_body
         odom.twist.twist.linear.y = 0.0
-        odom.twist.twist.angular.z = wz_used
+        #odom.twist.twist.angular.z = wz_used
 
         # covariance: z/roll/pitch는 관측 안함 → 큰 값
         odom.pose.covariance = [

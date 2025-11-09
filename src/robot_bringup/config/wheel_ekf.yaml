@@ -1,0 +1,67 @@
+frequency: 50.0
+sensor_timeout: 0.2
+two_d_mode: true
+
+# map  --(글로벌 로컬라이저: gmapping/AMCL/Cartographer 등)이 발행-->  odom
+# odom --(로컬 EKF: 지금 노드)이 발행-->  base_link
+
+# wheel_ekf.launch는, ODOM -> BASELINK의 관계를 보정한다/
+
+# 프레임 지정
+map_frame: map
+odom_frame: odom
+base_link_frame: base_link
+world_frame: odom   # 로컬 트래젝터리(드리프트 허용)일 땐 보통 odom 사용
+# world frame :: EKF가 어떤 세계 좌표를 기준으로 쓸지 선택한다.
+# world_frame : odom -> odom => base_link TF을 발행한다, 로컬 추정용 EKF에서 사용된다.
+# worrld_frame: map -> map => odom TF을 발행한다, 글로벌 보정용 EKF에서 사용된다.
+
+publish_tf: true    # EKF가 world_frame -> base_link_frame까지의 TF를 직접 발행
+
+# ------------------------------
+# 입력 1) 휠 오도메트리 (/wheel_odom)
+# pose + twist 사용 (yaw는 IMU가 보정)
+# ------------------------------
+odom0: /wheel_odom
+odom0_differential: false
+odom0_relative: false
+odom0_queue_size: 5
+# x y z roll pitch yaw vx vy vz vroll vpitch vyaw ax ay az
+odom0_config: [ true, true, false,
+                false, false, false,
+                true,  true,  false,
+                false, false, false,
+                false, false, false ]
+
+# 휠오돔 공분산 신뢰도(예시: xy/twist는 중간, yaw는 IMU가 담당)
+# 너무 작게 잡으면 필터가 오돔에 끌려감. 너무 크게 잡으면 IMU만 믿고 위치가 흔들릴 수 있음.
+# 여기선 msg에 들어온 covariance를 우선 사용. 필요하면 아래 noise 매개변수들 사용.
+
+# ------------------------------
+# 입력 2) IMU (/imu/data_centered)
+# yaw, yaw_rate, ax, ay 사용 (two_d_mode)
+# ------------------------------
+imu0: /imu
+imu0_differential: false
+imu0_relative: false
+imu0_queue_size: 10
+imu0_remove_gravitational_acceleration: true
+
+# roll pitch yaw wx wy wz ax ay az
+imu0_config: [ false, false,  true,
+               false, false,  true,
+                true,  true,  false ]
+
+# IMU의 yaw를 신뢰 (휠오돔 yaw 드리프트 보정용)
+# IMU covariance가 너무 작게 오면 필터가 과신할 수 있으니 적절히 보정
+
+# ------------------------------
+# 선택) 제어 입력이 있으면 여기 (보통은 안 씀)
+# use_control: false
+# control_timeout: 0.2
+# control_config: [true, false, false, false, false, true]
+# acceleration_limits, deceleration_limits, etc.
+
+# ------------------------------
+# 출력
+print_diagnostics: true
