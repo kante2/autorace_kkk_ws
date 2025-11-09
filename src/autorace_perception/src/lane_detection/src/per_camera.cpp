@@ -21,7 +21,6 @@ namespace lane_detection {
 
 namespace {
 
-// 주기 측정/디버깅용 더미 클래스 (현재는 기능 비활성화 상태)
 class CheckTimer {
 public:
     explicit CheckTimer(const std::string& /*name*/) {}
@@ -65,7 +64,6 @@ cv::Mat toCvMat(const sensor_msgs::ImageConstPtr& msg) {
 
 }  // namespace
 
-// 실시간 카메라 토픽을 구독해 BEV 변환 → 전처리 → 차선/정지선 검출 → 결과 퍼블리시까지 수행하는 ROS 노드
 class PerCameraNode {
 public:
     PerCameraNode()
@@ -76,7 +74,7 @@ public:
           check_timer_("per_camera_node"),
           img_x_(0),
           img_y_(0) {
-        sub_ = nh_.subscribe("/usb_cam/image_raw", 1, &PerCameraNode::imageCallback, this);
+        sub_ = nh_.subscribe("/usb_cam/image_rect_color", 1, &PerCameraNode::imageCallback, this);
         pub_ = nh_.advertise<std_msgs::String>("/perception/camera", 1);
         ROS_INFO("PerCamera C++ node started");
     }
@@ -86,7 +84,6 @@ public:
     }
 
 private:
-    // USB 카메라 토픽으로부터 이미지가 들어올 때마다 호출
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         try {
             img_ = toCvMat(msg);
@@ -102,7 +99,6 @@ private:
         }
     }
 
-    // 단일 프레임에 대해 BEV 변환→색상 분리→이진화→정지선·차선 추출까지 수행
     void processing() {
         if (img_.empty()) {
             return;
@@ -232,8 +228,8 @@ private:
 }  // namespace lane_detection
 
 int main(int argc, char** argv) {
-    ros::init(argc, argv, "per_camera_node");  // 노드 초기화
-    lane_detection::PerCameraNode node;        // 주요 처리 클래스 생성
-    node.spin();                               // ROS 이벤트 루프 실행
+    ros::init(argc, argv, "per_camera_node");
+    lane_detection::PerCameraNode node;
+    node.spin();
     return 0;
 }

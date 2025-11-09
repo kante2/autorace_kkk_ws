@@ -10,17 +10,16 @@ namespace lane_detection {
 SlidingWindow::SlidingWindow()
     : image_height_(0),
       window_height_(0),
-      margin_(80),         // 윈도우 좌우 여유 폭 (활성화 시 매번 갱신)
-      minpix_(100),        // 윈도우 내 최소 픽셀 수 조건
-      alpha_(0.8),         // 지수 평균 가중치 (추세 추정)
-      min_sep_(60),        // 좌/우 차선 최소 간격
+      margin_(80),
+      minpix_(100),
+      alpha_(0.8),
+      min_sep_(40),
       left_blocked_flag_(0),
       right_blocked_flag_(0),
       left_lane_start_(160),
       right_lane_start_(480) {}
 
 void SlidingWindow::init() {
-    // 각 프레임마다 누적 상태를 초기화
     left_blocked_flag_ = 0;
     right_blocked_flag_ = 0;
     left_lane_points_.clear();
@@ -29,7 +28,6 @@ void SlidingWindow::init() {
 }
 
 void SlidingWindow::setImageHeight(int img_y) {
-    // 투영 높이를 저장해 윈도우 크기 계산에 재사용
     image_height_ = img_y;
 }
 
@@ -100,7 +98,7 @@ SlidingWindowResult SlidingWindow::slidingWindowAdaptive(const cv::Mat& binary_i
 
     window_height_ = height / std::max(1, nwindows);
 
-    cv::findNonZero(binary_img, nonzero_points_);  // 모든 활성 픽셀을 미리 모아 탐색 비용 감소
+    cv::findNonZero(binary_img, nonzero_points_);
 
     int prev_left_margin = margin_;
     int prev_right_margin = margin_;
@@ -114,7 +112,6 @@ SlidingWindowResult SlidingWindow::slidingWindowAdaptive(const cv::Mat& binary_i
     int righty_current = height - window_height_ / 2;
 
     for (int i = 0; i < nwindows; ++i) {
-        // 좌/우 차선 각각에 대해 슬라이딩 윈도우를 수행 (연속 실패 시 flag로 중단)
         if (left_blocked_flag_ < 7) {
             slidingWindowLaneCalculation(leftx_current,
                                          lefty_current,
@@ -202,7 +199,6 @@ void SlidingWindow::slidingWindowLaneCalculation(int& x_current,
 
         double mean_x = sum_x / static_cast<double>(good_indices.size());
         double delta = mean_x + (mean_x - static_cast<double>(x_prev));
-        // 이동 평균 + 외삽을 결합해 직전 움직임을 약간 선행하여 추정
         x_current = static_cast<int>(alpha_ * mean_x + (1.0 - alpha_) * delta);
         y_current = std::max(0, y_current - window_height_);
         prev_margin = std::min((max_x - min_x) / 4, 20);
@@ -213,7 +209,6 @@ void SlidingWindow::slidingWindowLaneCalculation(int& x_current,
             return;
         }
 
-        // 현재 윈도우 중심을 시각화하고 차선 누적 벡터에 추가
         cv::circle(visualized, cv::Point(x_current, y_current), 5, cv::Scalar(0, 0, 255), cv::FILLED);
         flag = 0;
 
