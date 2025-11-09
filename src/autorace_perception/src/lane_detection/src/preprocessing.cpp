@@ -15,6 +15,7 @@ cv::Mat warpWithPoints(const cv::Mat& img,
                        const std::array<cv::Point2f, 4>& dst_points,
                        int img_x,
                        int img_y) {
+    // 시야 영역 사다리꼴을 직사각형으로 펴서 도로를 수직 투영(BEV)하는 공통 도우미
     if (img.empty()) {
         return cv::Mat();
     }
@@ -32,13 +33,17 @@ CameraPreprocessor::CameraPreprocessor() {
 }
 
 void CameraPreprocessor::initColor() {
+    // Python 버전에서 사용하던 HSV 범위를 그대로 재현
     yellow_lower_ = cv::Scalar(15, 128, 0);
     yellow_upper_ = cv::Scalar(40, 255, 255);
+    white_lower_ = cv::Scalar(0, 0, 192);
+    white_upper_ = cv::Scalar(179, 64, 255);
 }
 
 cv::Mat CameraPreprocessor::bevWarp(const cv::Mat& img, int img_y, int img_x) const {
     constexpr float delta = 25.0f;
 
+    // 일반 주행 환경에서 차선을 감시하는 사다리꼴 ROI 정의
     std::array<cv::Point2f, 4> src_points{
         cv::Point2f(-delta, 400.0f),
         cv::Point2f(180.0f, 300.0f),
@@ -58,6 +63,7 @@ cv::Mat CameraPreprocessor::bevWarp(const cv::Mat& img, int img_y, int img_x) co
 cv::Mat CameraPreprocessor::bevWarpRotary(const cv::Mat& img, int img_y, int img_x) const {
     constexpr float delta = 25.0f;
 
+    // 로터리 진입 시 더 넓은 영역을 잡도록 원본 사다리꼴을 조정
     std::array<cv::Point2f, 4> src_points{
         cv::Point2f(-delta, kWarpTargetHeight),
         cv::Point2f(291.0f, 260.0f),
@@ -88,8 +94,10 @@ void CameraPreprocessor::detectColorYellowAndWhite(const cv::Mat& img_bgr,
     cv::inRange(img_hsv, yellow_lower_, yellow_upper_, yellow_mask);
     cv::bitwise_and(img_bgr, img_bgr, yellow_filtered, yellow_mask);
 
-    // 흰 차선은 사용하지 않으므로 동일 크기의 0 행렬로 반환
-    white_filtered = cv::Mat::zeros(img_bgr.size(), img_bgr.type());
+    // 정지선·차선 모두 동일 프레임에서 처리할 수 있도록 흰색도 동시에 필터링
+    cv::Mat white_mask;
+    cv::inRange(img_hsv, white_lower_, white_upper_, white_mask);
+    cv::bitwise_and(img_bgr, img_bgr, white_filtered, white_mask);
 }
 
 void CameraPreprocessor::binaryImagesYellowAndWhite(const cv::Mat& yellow_filtered,
@@ -100,7 +108,7 @@ void CameraPreprocessor::binaryImagesYellowAndWhite(const cv::Mat& yellow_filter
         cv::Mat yellow_gray;
         cv::cvtColor(yellow_filtered, yellow_gray, cv::COLOR_BGR2GRAY);
         cv::threshold(yellow_gray, yellow_binary, 50.0, 255.0, cv::THRESH_BINARY);
-        // 노이즈 억제를 위해 작은 커널로 열기 연산
+        // 노란색 잡음 제거를 위해 3x3 커널로 열기 연산
         cv::morphologyEx(yellow_binary,
                          yellow_binary,
                          cv::MORPH_OPEN,
@@ -109,14 +117,15 @@ void CameraPreprocessor::binaryImagesYellowAndWhite(const cv::Mat& yellow_filter
         yellow_binary.release();
     }
 
-    cv::Size mask_size;
-    if (!yellow_filtered.empty()) {
-        mask_size = yellow_filtered.size();
-    } else if (!white_filtered.empty()) {
-        mask_size = white_filtered.size();
-    }
-    if (mask_size.width > 0 && mask_size.height > 0) {
-        white_binary = cv::Mat::zeros(mask_size, CV_8UC1);
+    if (!white_filtered.empty()) {
+        cv::Mat white_gray;
+        cv::cvtColor(white_filtered, white_gray, cv::COLOR_BGR2GRAY);
+        cv::threshold(white_gray, white_binary, 50.0, 255.0, cv::THRESH_BINARY);
+        // 흰색 차선도 동일한 방식으로 노이즈를 깎아 후단 알고리즘에 전달
+        cv::morphologyEx(white_binary,
+                         white_binary,
+                         cv::MORPH_OPEN,
+                         cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
     } else {
         white_binary.release();
     }
