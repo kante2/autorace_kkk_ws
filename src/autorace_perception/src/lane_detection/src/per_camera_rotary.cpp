@@ -22,6 +22,7 @@ cv::Mat toCvMat(const sensor_msgs::ImageConstPtr& msg) {
         return cv::Mat();
     }
     try {
+        // JPEG 토픽으로 들어온 이미지를 OpenCV BGR8 행렬로 변환
         auto cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
         return cv_ptr->image;
     } catch (const cv_bridge::Exception& e) {
@@ -74,26 +75,30 @@ private:
             img_y_ = img_.rows;
             img_x_ = img_.cols;
 
+            // 로터리 환경 전용 BEV 변환으로 차선 패턴이 평탄화되도록 정규화
             cv::Mat warped_img = preprocessor_.bevWarpRotary(img_, img_y_, img_x_);
             if (warped_img.empty()) {
                 return;
             }
 
             cv::Mat warped_hsv;
-            cv::cvtColor(warped_img, warped_hsv, cv::COLOR_BGR2HSV);
+            cv::cvtColor(warped_img, warped_hsv, cv::COLOR_BGR2HSV);  // HSV 색 공간으로 변환
 
             cv::Mat yellow_filtered;
             cv::Mat white_filtered;
+            // 노란/흰 차선을 동시에 필터링해 노란 정지선과 흰 차선을 얻는다
             preprocessor_.detectColorYellowAndWhite(warped_img,
                                                     warped_hsv,
                                                     yellow_filtered,
                                                     white_filtered);
 
+            // 이진화된 마스크를 만들어 로터리 진출 여부 판단에 활용
             preprocessor_.binaryImagesYellowAndWhite(yellow_filtered,
                                                      white_filtered,
                                                      yellow_bin_,
                                                      white_bin_);
 
+            // 노란 차선 픽셀 분포를 기반으로 로터리 탈출 상황인지 추론
             bool is_out_rotary = feature_extractor_.detectOutRotary(yellow_bin_);
 
             publishRotaryInfo(is_out_rotary);
@@ -107,6 +112,7 @@ private:
 
     void publishRotaryInfo(bool is_out_rotary) {
         std::ostringstream oss;
+        // JSON 배열 형태로 bool 값을 직렬화 (Python 노드와 호환)
         oss << "[" << (is_out_rotary ? "true" : "false") << "]";
 
         std_msgs::String msg;
@@ -119,6 +125,7 @@ private:
             return;
         }
 
+        // 로터리 디버깅용으로 노란색 바이너리 이미지를 띄운다
         cv::imshow("yellow_bin_img", yellow_bin_);
         cv::waitKey(1);
     }
