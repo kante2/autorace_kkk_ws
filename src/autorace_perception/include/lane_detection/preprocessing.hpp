@@ -25,7 +25,7 @@ public:
                                    cv::Mat& yellow_filtered,
                                    cv::Mat& white_filtered) const;
 
-    /// 필터링된 BGR 이미지를 바이너리 마스크로 변환(흰 차선 출력은 사용하지 않아 0으로 채움).
+    /// 필터링된 BGR 이미지를 바이너리 마스크로 변환.
     void binaryImagesYellowAndWhite(const cv::Mat& yellow_filtered,
                                     const cv::Mat& white_filtered,
                                     cv::Mat& yellow_binary,
@@ -36,6 +36,8 @@ private:
 
     cv::Scalar yellow_lower_;
     cv::Scalar yellow_upper_;
+    cv::Scalar white_lower_;
+    cv::Scalar white_upper_;
 };
 
 }  // namespace lane_detection

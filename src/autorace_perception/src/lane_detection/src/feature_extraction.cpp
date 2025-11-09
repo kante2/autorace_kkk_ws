@@ -4,7 +4,9 @@
 namespace lane_detection {
 
 namespace {
-constexpr int kLaneThreshold = 9000;
+
+constexpr int kLaneThreshold = 9000;  // 좌/우 영역별 최소 픽셀 수 기준
+
 }  // namespace
 
 LaneFeatureExtractor::LaneFeatureExtractor() {
@@ -12,7 +14,7 @@ LaneFeatureExtractor::LaneFeatureExtractor() {
 }
 
 void LaneFeatureExtractor::initCurrentLane() {
-    current_lane_ = "right";
+    current_lane_ = "right";  // 초기 모드는 우측 차선 주행으로 고정
 }
 
 std::vector<int> LaneFeatureExtractor::estimateStopLine(cv::Mat& binary,
@@ -25,6 +27,7 @@ std::vector<int> LaneFeatureExtractor::estimateStopLine(cv::Mat& binary,
         return stop_line;
     }
 
+    // 노란 정지선 픽셀 수가 임계값을 넘는 행 인덱스를 모두 수집
     std::vector<int> indices;
     indices.reserve(binary.rows);
 
@@ -39,8 +42,8 @@ std::vector<int> LaneFeatureExtractor::estimateStopLine(cv::Mat& binary,
     if (!indices.empty()) {
         int min_y = indices.front();
         int max_y = indices.back();
-        cv::Rect roi(0, min_y, binary.cols, std::max(1, max_y - min_y + 1));
-        binary(roi).setTo(0);
+        cv::Rect roi(0, min_y, binary.cols, std::max(1, max_y - min_y + 1));  // 정지선 영역
+        binary(roi).setTo(0);  // 정지선 영역을 0으로 비워 이후 차선 검출에 영향이 없도록 함
         stop_line = {min_y, max_y};
     }
 
@@ -55,13 +58,13 @@ std::string LaneFeatureExtractor::estimateLaneMode(const cv::Mat& bev_bgr) {
     cv::Mat hsv;
     cv::cvtColor(bev_bgr, hsv, cv::COLOR_BGR2HSV);
 
-    cv::Scalar yellow_lower(18, 140, 120);
-    cv::Scalar yellow_upper(34, 255, 255);
-    cv::Mat yellow_mask;
-    cv::inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+    cv::Scalar white_lower(0, 0, 192);
+    cv::Scalar white_upper(179, 64, 255);
+    cv::Mat white_mask;
+    cv::inRange(hsv, white_lower, white_upper, white_mask);  // 좌·우 차선이 모두 흰색이므로 흰 마스크 사용
 
-    int width = yellow_mask.cols;
-    int height = yellow_mask.rows;
+    int width = white_mask.cols;
+    int height = white_mask.rows;
     if (width == 0 || height == 0) {
         return current_lane_;
     }
@@ -69,12 +72,13 @@ std::string LaneFeatureExtractor::estimateLaneMode(const cv::Mat& bev_bgr) {
     cv::Rect left_rect(0, 0, width / 2, height);
     cv::Rect right_rect(width / 2, 0, width - width / 2, height);
 
-    int left_yellow_count = cv::countNonZero(yellow_mask(left_rect));
-    int right_yellow_count = cv::countNonZero(yellow_mask(right_rect));
+    // 좌우 흰 차선 픽셀 수를 비교해 현재 차선 모드를 결정한다.
+    int left_white_count = cv::countNonZero(white_mask(left_rect));
+    int right_white_count = cv::countNonZero(white_mask(right_rect));
 
-    if (left_yellow_count > kLaneThreshold) {
+    if (left_white_count > kLaneThreshold) {  // 좌측 영역에 흰 픽셀이 몰리면 좌측 차선 주행으로 판단
         current_lane_ = "left";
-    } else if (right_yellow_count > kLaneThreshold) {
+    } else if (right_white_count > kLaneThreshold) {  // 우측 영역 픽셀이 많으면 우측 차선 모드
         current_lane_ = "right";
     }
 
