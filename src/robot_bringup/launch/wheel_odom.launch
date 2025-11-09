@@ -15,5 +15,4 @@
   <!-- robot_localization EKF 노드 실행 -->
   <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se_odom" output="screen"/>
 
-  <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom_tf" args="2.101464 18.425203 0 0 0 0 1 map odom" /> -->
 </launch>
