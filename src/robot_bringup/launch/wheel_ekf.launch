@@ -1,0 +1,31 @@
+<!-- /root/autorace_kkk_ws/src/robot_bringup/launch/wheel_ekf.launch -->
+<launch>
+  <!-- 공통 옵션 -->
+  <arg name="use_sim_time" default="false"/>
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <!-- 각 노드가 읽을 설정 파일 경로 -->
+  <arg name="wheel_odom_yaml" default="$(find robot_bringup)/config/wheel_odom.yaml"/>
+  <arg name="ekf_yaml"        default="$(find robot_bringup)/config/wheel_ekf.yaml"/>
+
+  <!-- 1) 휠오돔 노드: TF는 끄고, /wheel_odom 퍼블리시만 하도록 -->
+  <node pkg="robot_bringup" type="wheel_odom_node.py" name="wheel_odom" output="screen" respawn="true">
+    <!-- wheel_odom_node.py의 ~프라이빗 파라미터 로드 -->
+    <rosparam command="load" file="$(arg wheel_odom_yaml)"/>
+    <!-- 안전하게 보장하고 싶으면 여기서도 명시 -->
+    <param name="publish_tf" value="true"/>
+    <param name="odom_topic" value="/wheel_odom"/>
+  </node>
+
+  <!-- 2) EKF: /wheel_odom + /imu/... 융합 → /odometry/filtered & TF(odom->base_link) -->
+  <node pkg="robot_localization" type="ekf_localization_node"
+        name="ekf_localization" output="screen" respawn="true">
+    <param name="~debug" value="false"/>
+    <rosparam command="load" file="$(arg ekf_yaml)"/>
+    <!-- 기본 출력 토픽명이 odometry/filtered 이므로 굳이 remap 불필요하지만, 명시하고 싶으면 유지 -->
+    <remap from="odometry/filtered" to="/odometry/filtered"/>
+  </node>
+</launch>
+
+<!-- 1. WHEEL EKF이용 -->
+<!-- 2. SLAM GMAPPING /root/autorace_kkk_ws/src/slam_gmapping/gmapping/launch/slam_gmapping_pr2.launch 으로 SLAM GMAPPING을 실행. -->
