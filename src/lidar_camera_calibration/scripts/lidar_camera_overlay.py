@@ -13,7 +13,7 @@ class LidarToImageOverlay:
         self.image_topic = rospy.get_param('~image_topic', '/usb_cam/image_rect_color')
         self.scan_topic = rospy.get_param('~scan_topic', '/scan')
         self.calib_yaml = rospy.get_param('~calibration_yaml')
-
+        #hello 
 
         self.point_step = int(rospy.get_param('~point_step', 1))
         self.min_range = float(rospy.get_param('~min_range', 0.12))
