@@ -11,5 +11,6 @@
         "slist": "cpp",
         "system_error": "cpp",
         "random": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/root/autorace_kkk_ws/src/MORAI-ROS_morai_msgs"
 }
