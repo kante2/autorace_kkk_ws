@@ -13,15 +13,10 @@ class LidarToImageOverlay:
         self.image_topic = rospy.get_param('~image_topic', '/usb_cam/image_rect_color')
         self.scan_topic = rospy.get_param('~scan_topic', '/scan')
         self.calib_yaml = rospy.get_param('~calibration_yaml')
-        #hello 
 
         self.point_step = int(rospy.get_param('~point_step', 1))
         self.min_range = float(rospy.get_param('~min_range', 0.12))
         self.max_range = float(rospy.get_param('~max_range', 12.0))
-        angle_min_deg = rospy.get_param('~angle_min_deg', -30)
-        angle_max_deg = rospy.get_param('~angle_max_deg', 30)
-        self.angle_min_limit = np.deg2rad(float(angle_min_deg)) if angle_min_deg is not None else None
-        self.angle_max_limit = np.deg2rad(float(angle_max_deg)) if angle_max_deg is not None else None
         self.draw_radius = int(rospy.get_param('~draw_radius', 2))
         self.draw_thickness = int(rospy.get_param('~draw_thickness', -1))
         bgr = rospy.get_param('~draw_bgr', '0,255,255')
@@ -37,11 +32,6 @@ class LidarToImageOverlay:
         self.sub_lid = rospy.Subscriber(self.scan_topic, LaserScan, self.cb_scan, queue_size=1)
         self.pub_img = rospy.Publisher('lidar_on_image', Image, queue_size=1)
 
-
-        if self.angle_min_limit is not None or self.angle_max_limit is not None:
-            amin = np.rad2deg(self.angle_min_limit) if self.angle_min_limit is not None else None
-            amax = np.rad2deg(self.angle_max_limit) if self.angle_max_limit is not None else None
-            rospy.loginfo('Overlay ROI angles: min=%s°, max=%s°', str(amin), str(amax))
         rospy.loginfo('Overlay node ready: projecting LiDAR points onto camera image')
 
 
@@ -77,10 +67,7 @@ class LidarToImageOverlay:
             if not np.isfinite(r) or r <= rmin or r >= rmax:
                 continue
             theta = angle_min + i * angle_inc
-            if self.angle_min_limit is not None and theta < self.angle_min_limit:
-                continue
-            if self.angle_max_limit is not None and theta > self.angle_max_limit:
-                continue
+            
             xl = r * np.cos(theta)
             yl = r * np.sin(theta)
             Xl = np.array([[xl],[yl],[0.0]])
