@@ -15,11 +15,12 @@ camera_intrinsics:
 # LiDAR→Camera 변환 (카메라 좌표계 = R*LiDAR + t)
 # 회전 없음, 평행이동만 (사용자 제공값)
 extrinsics:
-  T_lidar_camera: [0,1,0,0.45,
+  T_lidar_camera: 
+  [0,1,0,0.45,
     0,0,1, 0.46,
     -1,0,0, 0.9,
     0,0,0, 1.0]
 
 
 viz:
-  clamp_to_image: true
+  clamp_to_imxhost +local:dockerage: true
