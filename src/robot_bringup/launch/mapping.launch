@@ -1,0 +1,15 @@
+<launch>
+  <!-- 기본 로봇 TF -->
+  <include file="$(find robot_bringup)/launch/robot_state_publisher.launch">
+    <arg name="use_gui" value="false"/>
+  </include>
+
+  <!-- 휠 오도메트리 + EKF -->
+  <include file="$(find robot_bringup)/launch/wheel_odom.launch"/>
+
+  <!-- SLAM (gmapping) -->
+  <include file="$(find gmapping)/launch/slam_gmapping_pr2.launch"/>
+
+  <!-- RViz with predefined sensor layout -->
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find robot_bringup)/config/sensors.rviz" output="screen"/>
+</launch>

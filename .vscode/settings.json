@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "deque": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "any": "cpp",
+        "slist": "cpp",
+        "system_error": "cpp",
+        "random": "cpp"
+    },
+    "cmake.sourceDirectory": "/root/autorace_kkk_ws/src/MORAI-ROS_morai_msgs"
+}

@@ -15,3 +15,15 @@ __pycache__/
 !src/f1tenth_gym_ros/**
 !src/geometry2/**
 !src/slam_gmapping/**
+!src/usb_cam/**
+!src/fiducials/**
+!src/image_pipeline/**
+!src/rplidar_ros/**
+!src/vesc/**
+!src/yolo/src/**
+!src/AutoRace-2024/**
+!src/beginner_tutorials_answer/**
+!src/razor_imu_9dof/**
+!src/racecar/**
+!src/slam_toolbox/**
+!src/robot_localization/**

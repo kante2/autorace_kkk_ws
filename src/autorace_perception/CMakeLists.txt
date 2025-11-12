@@ -1,205 +1,160 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.10)
 project(autorace_perception)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
-  message_generation
   morai_msgs
   nav_msgs
   roscpp
+  sensor_msgs
+  cv_bridge
   std_msgs
   tf2
   tf2_geometry_msgs
   tf2_ros
+  usb_cam
+  image_proc
+  image_view
+  pcl_ros            # ✅ LiDAR(PCL) 사용 시 ROS 브릿지
+  pcl_conversions    # ✅ sensor_msgs <-> PCL 변환
 )
 
-## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+find_package(OpenCV REQUIRED)
+# ✅ PCL은 선택사항으로 처리(없으면 LiDAR 노드만 빌드 생략)
+find_package(PCL QUIET)
 
-
-## Uncomment this if the package has a setup.py. This macro ensures
-## modules and global scripts declared therein get installed
-## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
-# catkin_python_setup()
-
-################################################
-## Declare ROS messages, services and actions ##
-################################################
-
-## To declare and build messages, services or actions from within this
-## package, follow these steps:
-## * Let MSG_DEP_SET be the set of packages whose message types you use in
-##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
-## * In the file package.xml:
-##   * add a build_depend tag for "message_generation"
-##   * add a build_depend and a exec_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
-##     but can be declared for certainty nonetheless:
-##     * add a exec_depend tag for "message_runtime"
-## * In this file (CMakeLists.txt):
-##   * add "message_generation" and every package in MSG_DEP_SET to
-##     find_package(catkin REQUIRED COMPONENTS ...)
-##   * add "message_runtime" and every package in MSG_DEP_SET to
-##     catkin_package(CATKIN_DEPENDS ...)
-##   * uncomment the add_*_files sections below as needed
-##     and list every .msg/.srv/.action file to be processed
-##   * uncomment the generate_messages entry below
-##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
-
-## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
-
-## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
-
-## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
-#   Action2.action
-# )
-
-## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   geometry_msgs#   morai_msgs#   nav_msgs#   std_msgs#   tf2_geometry_msgs
-# )
-
-################################################
-## Declare ROS dynamic reconfigure parameters ##
-################################################
-
-## To declare and build dynamic reconfigure parameters within this
-## package, follow these steps:
-## * In the file package.xml:
-##   * add a build_depend and a exec_depend tag for "dynamic_reconfigure"
-## * In this file (CMakeLists.txt):
-##   * add "dynamic_reconfigure" to
-##     find_package(catkin REQUIRED COMPONENTS ...)
-##   * uncomment the "generate_dynamic_reconfigure_options" section below
-##     and list every .cfg file to be processed
-
-## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
-
-###################################
-## catkin specific configuration ##
-###################################
-## The catkin_package macro generates cmake config files for your package
-## Declare things to be passed to dependent projects
-## INCLUDE_DIRS: uncomment this if your package contains header files
-## LIBRARIES: libraries you create in this project that dependent projects also need
-## CATKIN_DEPENDS: catkin_packages dependent projects also need
-## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES autorace_perception
-#  CATKIN_DEPENDS geometry_msgs message_generation morai_msgs nav_msgs roscpp std_msgs tf2 tf2_geometry_msgs tf2_ros
-#  DEPENDS system_lib
+  INCLUDE_DIRS
+    include
+  LIBRARIES
+    lane_detection_core
+  CATKIN_DEPENDS
+    geometry_msgs
+    morai_msgs
+    nav_msgs
+    roscpp
+    sensor_msgs
+    cv_bridge
+    std_msgs
+    tf2
+    tf2_geometry_msgs
+    tf2_ros
+    usb_cam
+    image_proc
+    image_view
+    pcl_ros
+    pcl_conversions
+  DEPENDS
+    OpenCV
 )
 
-###########
-## Build ##
-###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
+# 전역 인클루드(헤더 포함 경로)
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
-## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/autorace_perception.cpp
-# )
+# ------- 경로 변수 -------
+set(LANE_DETECTION_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lane_detection/src)
+set(SENSOR_LIDAR_DIR       ${CMAKE_CURRENT_SOURCE_DIR}/src/sensor_lidar)
 
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# ------- 라이브러리(lane_detection 코어) -------
+add_library(lane_detection_core
+  ${LANE_DETECTION_SRC_DIR}/feature_extraction.cpp
+  ${LANE_DETECTION_SRC_DIR}/preprocessing.cpp
+  ${LANE_DETECTION_SRC_DIR}/sliding_window.cpp
+)
+add_dependencies(lane_detection_core ${catkin_EXPORTED_TARGETS})
+target_link_libraries(lane_detection_core
+  PUBLIC
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+target_include_directories(lane_detection_core
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    ${catkin_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
+)
 
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/autorace_perception_node.cpp)
+# ------- 실행 파일: per_camera -------
+add_executable(per_camera_node
+  ${LANE_DETECTION_SRC_DIR}/per_camera.cpp
+)
+add_dependencies(per_camera_node ${catkin_EXPORTED_TARGETS})
+target_link_libraries(per_camera_node
+  PRIVATE
+    lane_detection_core
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+target_include_directories(per_camera_node
+  PRIVATE
+    ${catkin_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${OpenCV_INCLUDE_DIRS}
+)
 
-## Rename C++ executable without prefix
-## The above recommended prefix causes long target names, the following renames the
-## target back to the shorter version for ease of user use
-## e.g. "rosrun someones_pkg node" instead of "rosrun someones_pkg someones_pkg_node"
-# set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
+# ------- 실행 파일: per_camera_rotary -------
+add_executable(per_camera_rotary_node
+  ${LANE_DETECTION_SRC_DIR}/per_camera_rotary.cpp
+)
+add_dependencies(per_camera_rotary_node ${catkin_EXPORTED_TARGETS})
+target_link_libraries(per_camera_rotary_node
+  PRIVATE
+    lane_detection_core
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
+target_include_directories(per_camera_rotary_node
+  PRIVATE
+    ${catkin_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${OpenCV_INCLUDE_DIRS}
+)
 
-## Add cmake target dependencies of the executable
-## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# ------- 실행 파일: LiDAR(옵션) -------
+if(PCL_FOUND)
+  include_directories(${PCL_INCLUDE_DIRS})
+  add_definitions(${PCL_DEFINITIONS})
 
-## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+  add_executable(lidar_obstacle_detect_node
+    ${SENSOR_LIDAR_DIR}/lidar_obstacle_detect.cpp
+  )
+  add_dependencies(lidar_obstacle_detect_node ${catkin_EXPORTED_TARGETS})
+  target_link_libraries(lidar_obstacle_detect_node
+    PRIVATE
+      ${catkin_LIBRARIES}
+      ${PCL_LIBRARIES}
+  )
+else()
+  message(WARNING "PCL not found. 'lidar_obstacle_detect_node' will not be built.")
+endif()
 
-#############
-## Install ##
-#############
+# ------- 설치 -------
+install(TARGETS
+    lane_detection_core
+    per_camera_node
+    per_camera_rotary_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)
 
-# all install targets should use catkin DESTINATION variables
-# See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
+if(PCL_FOUND)
+  install(TARGETS
+    lidar_obstacle_detect_node
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  )
+endif()
 
-## Mark executables for installation
-## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-# install(TARGETS ${PROJECT_NAME}_node
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
-
-## Mark libraries for installation
-## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
-# install(TARGETS ${PROJECT_NAME}
-#   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
-# )
-
-## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
-
-## Mark other files for installation (e.g. launch and bag files, etc.)
-# install(FILES
-#   # myfile1
-#   # myfile2
-#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-# )
-
-#############
-## Testing ##
-#############
-
-## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_autorace_perception.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
-
-## Add folders to be run by python nosetests
-# catkin_add_nosetests(test)
+install(DIRECTORY include/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)

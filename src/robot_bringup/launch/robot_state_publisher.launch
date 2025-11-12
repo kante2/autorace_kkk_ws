@@ -30,9 +30,4 @@
           name="joint_state_publisher_gui" output="screen"/>
   </group>
 
-  <!-- 디버그용 고정 TF: 필요할 때만 잠깐 켜서 프레임 확인 -->
-  <!--
-  <node pkg="tf" type="static_transform_publisher" name="world_to_base_link"
-        args="0 0 0 0 0 0 world base_link 100"/>
-  -->
 </launch>

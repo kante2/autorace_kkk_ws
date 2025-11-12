@@ -1,0 +1,18 @@
+<launch>
+<arg name="image_topic" default="/usb_cam/image_rect_color"/>
+<arg name="scan_topic" default="/scan"/>
+<arg name="calib_yaml" default="$(find lidar_camera_calibration)/config/calib_overlay.yaml"/>
+
+
+<node pkg="lidar_camera_calibration" type="lidar_camera_overlay.py" name="lidar_camera_overlay" output="screen">
+<param name="image_topic" value="$(arg image_topic)"/>
+<param name="scan_topic" value="$(arg scan_topic)"/>
+<param name="calibration_yaml" value="$(arg calib_yaml)"/>
+<param name="point_step" value="1"/>
+<param name="min_range" value="0.12"/>
+<param name="max_range" value="12.0"/>
+<param name="draw_radius" value="2"/>
+<param name="draw_thickness" value="-1"/>
+<param name="draw_bgr" value="0,255,255"/> <!-- 노랑점 -->
+</node>
+</launch>

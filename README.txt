@@ -3,6 +3,22 @@
 
 ros1 noetic
 
+
+# ------------install 해야 하는 것들 -------------
+sudo apt update
+sudo apt install -y ros-noetic-vision-msgs
+
+# 단축키
+# source -> ss
+echo "alias ss='source devel/setup.bash'" >> ~/.bashrc
+source ~/.bashrc
+
+# catkin -> cc
+# catkin_make 를 cc로
+echo "alias cc='catkin_make'" >> ~/.bashrc
+source ~/.bashrc
+
+
 # slam_gmapping
 https://github.com/ros-perception/slam_gmapping.git
 
