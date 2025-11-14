@@ -13,7 +13,7 @@ SlidingWindow::SlidingWindow()
       margin_(80),         // 윈도우 좌우 여유 폭 (활성화 시 매번 갱신)
       minpix_(100),        // 윈도우 내 최소 픽셀 수 조건
       alpha_(0.8),         // 지수 평균 가중치 (추세 추정)
-      min_sep_(60),        // 좌/우 차선 최소 간격
+      min_sep_(30),        // 좌/우 차선 최소 간격 // test1: 60 -> 30으로 수정
       left_blocked_flag_(0),
       right_blocked_flag_(0),
       left_lane_start_(160),

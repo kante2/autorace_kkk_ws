@@ -3,6 +3,13 @@
 
 ros1 noetic
 
+1.rosbridge 초기설정 
+sudo apt update
+sudo apt install ros-$ROS_DISTRO-rosbridge-suite
+1-2.최종 rosbridge 용
+roslaunch rosbridge_server rosbridge_websocket.launch
+
+
 
 # ------------install 해야 하는 것들 -------------
 sudo apt update

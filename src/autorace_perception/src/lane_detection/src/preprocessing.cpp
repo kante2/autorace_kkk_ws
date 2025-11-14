@@ -36,7 +36,11 @@ void CameraPreprocessor::initColor() {
     // Python 버전에서 사용하던 HSV 범위를 그대로 재현
     yellow_lower_ = cv::Scalar(15, 128, 0);
     yellow_upper_ = cv::Scalar(40, 255, 255);
-    white_lower_ = cv::Scalar(0, 0, 192);
+    // TEST1.흰색의 범위가 좁아서, 차선이 제대로 검출되지 않는 문제가 있음, 
+    // white_lower_ = cv::Scalar(0, 0, 192);
+    // white_upper_ = cv::Scalar(179, 64, 255);
+    // TEST2.흰색 범위를 넓혀서, 차선이 더 잘 검출되도록 수정 --> 아래 영역과 같이 변경하였더니 해결이 완료!
+    white_lower_ = cv::Scalar(0, 0, 128);
     white_upper_ = cv::Scalar(179, 64, 255);
 }
 
