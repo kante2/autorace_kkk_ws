@@ -14,6 +14,7 @@ def detect(angle_ranges, dist_ranges, eps, min_pts):
 
 def polar_to_cartesian(angles: np.ndarray, dists: np.ndarray) -> np.ndarray:
     # (dist, radian) -> (x,y)
+    angles = np.deg2rad(angles)
     x = dists * np.cos(angles)
     y = dists * np.sin(angles)
     return np.stack((x, y), axis=1)
@@ -64,6 +65,6 @@ def compute_centroids(points: np.ndarray, labels: np.ndarray) -> List[Dict[str, 
         mean_x, mean_y = cluster_points.mean(axis=0)
         distance = float(math.hypot(mean_x, mean_y))
         angle_rad = math.atan2(mean_y, mean_x)
-        angle_deg = math.degrees(angle_rad)
+        angle_deg = math.degrees(angle_rad) # 0°가 정면, +각도가 반시계(좌측), -각도가 시계(우측) 방향
         centroids.append({"angle": angle_deg, "distance": distance})
     return centroids

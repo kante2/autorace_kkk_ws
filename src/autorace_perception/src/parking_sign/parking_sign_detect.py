@@ -12,7 +12,10 @@ class ParkingSignORBNode(object):
     def __init__(self):
         # 파라미터
         self.image_topic = rospy.get_param('~image_topic', '/usb_cam/image_rect_color')
-        self.template_path = rospy.get_param('~template_path', '/path/to/parking_template.png')
+        self.img_path = rospy.get_param(
+            '~img_path',
+            '/root/autorace_kkk_ws/src/autorace_perception/src/parking_sign/Parking_sign.jpg'
+        )
         self.resize_template_max = int(rospy.get_param('~resize_template_max', 512))
         self.orb_nfeatures = int(rospy.get_param('~orb_nfeatures', 1000))
         self.lowe_ratio = float(rospy.get_param('~lowe_ratio', 0.75))
@@ -21,11 +24,12 @@ class ParkingSignORBNode(object):
         self.min_inlier_ratio = float(rospy.get_param('~min_inlier_ratio', 0.25))
         self.debounce_frames = int(rospy.get_param('~debounce_frames', 5))
         self.publish_debug = bool(rospy.get_param('~publish_debug', False))
+        self.show_window = bool(rospy.get_param('~show_window', True))
 
         # 템플릿 로드 및 전처리
-        if not os.path.exists(self.template_path):
-            raise IOError('template_path not found: {}'.format(self.template_path))
-        tmpl_gray = cv2.imread(self.template_path, cv2.IMREAD_GRAYSCALE)
+        if not os.path.exists(self.img_path):
+            raise IOError('img_path not found: {}'.format(self.img_path))
+        tmpl_gray = cv2.imread(self.img_path, cv2.IMREAD_GRAYSCALE)
         if tmpl_gray is None:
             raise IOError('failed to read template image')
         th, tw = tmpl_gray.shape[:2]
@@ -58,6 +62,7 @@ class ParkingSignORBNode(object):
     def cb_image(self, msg):
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        #cv2.imshow("img",gray)
 
         kp_f, des_f = self.orb.detectAndCompute(gray, None)
         detected = False
@@ -88,9 +93,11 @@ class ParkingSignORBNode(object):
         # 디바운싱
         if detected:
             self.hit_streak = min(self.hit_streak + 1, self.debounce_frames)
+            print("detected")
+            
         else:
             self.hit_streak = max(self.hit_streak - 1, 0)
-
+            print("not detected")
         flag = Bool(data=(self.hit_streak >= self.debounce_frames))
         self.flag_pub.publish(flag)
 
@@ -98,6 +105,10 @@ class ParkingSignORBNode(object):
             dbg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
             dbg.header = msg.header
             self.debug_pub.publish(dbg)
+
+        if self.show_window:
+            cv2.imshow('parking_sign_debug', frame)
+            cv2.waitKey(1)
 
 def main():
     rospy.init_node('parking_sign_orb_node')
