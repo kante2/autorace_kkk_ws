@@ -45,7 +45,7 @@ class Yolov8DetectorNode:
         # 3개 클래스라 했으니까 예시로 넣어놓음
         self.class_names = rospy.get_param(
             "~class_names",
-            ["class0", "class1", "class2"]
+            ["turn_left", "turn_right", "parking"]
         )
 
         # === YOLO 모델 로드 ===

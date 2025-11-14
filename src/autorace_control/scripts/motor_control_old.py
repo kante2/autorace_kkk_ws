@@ -4,7 +4,8 @@
 import rospy
 import cv2
 import numpy as np
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage 
+# 
 from cv_bridge import CvBridge
 from std_msgs.msg import Float32
 from geometry_msgs.msg import PointStamped
@@ -32,7 +33,7 @@ class LaneCurvatureNode:
         self.bridge = CvBridge()
         # self.sub = rospy.Subscriber("/usb_cam/image_rect_color", Image, self.cb_image,
         #                             queue_size=2, buff_size=2**24)
-        self.sub = rospy.Subscriber("/image_jpeg/compressed", Image, self.cb_image,
+        self.sub = rospy.Subscriber("/image_jpeg/compressed", CompressedImage, self.cb_image,
                                     queue_size=2, buff_size=2**24)
 
         # pub --> controller
@@ -41,8 +42,11 @@ class LaneCurvatureNode:
         self.pub_k_right  = rospy.Publisher("/perception/curvature_right",  Float32, queue_size=1)
         self.pub_k_center = rospy.Publisher("/perception/curvature_center", Float32, queue_size=1)
         # 2.차선 중심
-        self.pub_center_point = rospy.Publisher("/perception/center_point_px", PointStamped, queue_size=1)
-        self.lane_width_px = rospy.get_param("~lane_width_px", 340.0)  # BEV에서의 차선 폭(px) 추정치
+        # self.pub_center_point = rospy.Publisher("/perception/center_point_px", PointStamped, queue_size=1)
+        self.pub_center_x = rospy.Publisher("/perception/center_x_px", Float32, queue_size=1)
+        self.pub_dx = rospy.Publisher("/perception/dx_px", Float32, queue_size=1)
+
+        self.lane_width_px = rospy.get_param("~lane_width_px", 480.0)  # BEV에서의 차선 폭(px) 추정치
 
 
         # === Sliding-window params ===
@@ -61,10 +65,16 @@ class LaneCurvatureNode:
         self.roi_right_bot_ratio = rospy.get_param("~roi_right_bot_ratio", 1.40)
 
         # === Color thresholds (HSV) ===
-        self.yellow_lower = np.array([10,  80,  60], dtype=np.uint8)
-        self.yellow_upper = np.array([45, 255, 255], dtype=np.uint8)
-        self.white_lower  = np.array([ 0,   0, 160], dtype=np.uint8) # WHITE 튜닝 해야 함,,
-        self.white_upper  = np.array([179,  80, 255], dtype=np.uint8)
+        # self.yellow_lower = np.array([10,  80,  60], dtype=np.uint8)
+        # self.yellow_upper = np.array([45, 255, 255], dtype=np.uint8)
+        # self.white_lower  = np.array([ 0,   0, 150], dtype=np.uint8)
+        # self.white_upper  = np.array([179,  60, 255], dtype=np.uint8)
+        
+        # morai
+        self.yellow_lower = np.array([18,  60,  140], dtype=np.uint8)
+        self.yellow_upper = np.array([40, 255, 255], dtype=np.uint8)
+        self.white_lower  = np.array([ 0,   0, 150], dtype=np.uint8)
+        self.white_upper  = np.array([179,  60, 255], dtype=np.uint8)
 
     # ---------------- Core helpers ----------------
     def make_roi_polygon(self, h, w):
@@ -82,7 +92,7 @@ class LaneCurvatureNode:
         """ROI 사다리꼴을 이미지 전체 직사각형으로 펴서(BEV) 반환"""
         h, w = bgr.shape[:2]
         BL, TL, TR, BR = roi_poly.astype(np.float32)
-``
+
         # y는 유효 영역으로 클리핑 (x는 일부 화면 밖을 허용)
         for p in (BL, TL, TR, BR):
             p[1] = np.clip(p[1], 0, h - 1)
@@ -273,7 +283,9 @@ class LaneCurvatureNode:
     # ---------------- ROS callback ----------------
     def cb_image(self, msg):
         try:
-            bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            # bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            # morai version,, 
+            bgr = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
             if bgr is None: return
             if bgr.ndim == 2 or (bgr.ndim == 3 and bgr.shape[2] == 1):
                 bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
@@ -318,12 +330,7 @@ class LaneCurvatureNode:
                 dxdy = 2*a*y_eval + b
                 d2xdy2 = 2*a
                 center_curvature = abs(d2xdy2) / ((1.0 + dxdy*dxdy) ** 1.5)
-            # --------------------------------------------------------------------------------
-            # 퍼블리시
-            # self.pub_k_left.publish(left_curvature if left_curvature is not None else float('nan'))
-            # self.pub_k_right.publish(right_curvature if right_curvature is not None else float('nan'))
-            # self.pub_k_center.publish(center_curvature if center_curvature is not None else float('nan'))
-            #--> 단순화,  ======= PUBLISH (Float32로 감싸서 송출) =======  # CHANGED
+
             def curv_msg(v): 
                 return Float32(data=float(v)) if (v is not None and np.isfinite(float(v))) else Float32(data=float('nan'))
 
@@ -340,9 +347,41 @@ class LaneCurvatureNode:
                 pt_msg.point.x = float(cx)
                 pt_msg.point.y = float(cy)
                 pt_msg.point.z = 0.0
-                self.pub_center_point.publish(pt_msg)
+                # self.pub_center_point.publish(pt_msg)
                 cv2.circle(debug_img, (int(cx), int(cy)), 6, (255, 0, 255), -1)
 
+                # === 디버그: 중앙 픽셀 vs 카메라(프레임) 중심 표시 ===
+                img_cx = bev_binary.shape[1] * 0.5
+                img_cy = bev_binary.shape[0] * 0.5
+
+                # 규약 고정: dx = cx - img_cx  (오른쪽이 +)
+                dx = float(cx) - float(img_cx)
+                dy = float(cy) - float(img_cy)
+
+                # ROS 퍼블리시
+                self.pub_center_x.publish(Float32(data=float(cx)))
+                self.pub_dx.publish(Float32(data=float(dx)))
+
+                # BEV 디버그 이미지에: 카메라(프레임) 중심 십자 + 차선 중심 십자/보라점
+                cv2.drawMarker(debug_img, (int(img_cx), int(img_cy)), (255, 255, 0),  # 시안색
+                            markerType=cv2.MARKER_CROSS, markerSize=14, thickness=2)
+                cv2.drawMarker(debug_img, (int(cx), int(cy)), (255, 0, 255),
+                            markerType=cv2.MARKER_TILTED_CROSS, markerSize=12, thickness=2)
+
+                # 가이드 라인
+                cv2.line(debug_img, (int(cx), 0), (int(cx), bev_binary.shape[0]-1), (255, 0, 255), 1)
+                cv2.line(debug_img, (0, int(cy)), (bev_binary.shape[1]-1, int(cy)), (255, 0, 255), 1)
+
+                # 텍스트(좌표 & 오프셋)
+                cv2.putText(debug_img,
+                            f"LaneCenter=({cx:.1f},{cy:.1f})  ImgCenter=({img_cx:.1f},{img_cy:.1f})  d=({dx:+.1f},{dy:+.1f})",
+                            (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
+
+                # 좌측 원본(src_vis)에도 카메라 프레임 중심을 동일하게 표시(시안색)
+                src_cx = w * 0.5
+                src_cy = h * 0.5
+                cv2.drawMarker(src_vis, (int(src_cx), int(src_cy)), (255, 255, 0),
+                            markerType=cv2.MARKER_CROSS, markerSize=14, thickness=2)
 
             # --------------------------------------------------------------------------------
                 

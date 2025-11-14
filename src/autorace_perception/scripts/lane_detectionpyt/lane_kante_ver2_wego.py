@@ -10,7 +10,6 @@ from std_msgs.msg import Float32
 from geometry_msgs.msg import PointStamped
 
 
-
 class LaneCurvatureNode:
     def __init__(self):
         rospy.init_node("lane_curvature_node")
@@ -21,8 +20,10 @@ class LaneCurvatureNode:
         self.win_src = "src_with_roi"
         self.win_bev = "bev_binary_and_windows"
         if self.show_window:
-            try: cv2.startWindowThread()
-            except Exception: pass
+            try:
+                cv2.startWindowThread()
+            except Exception:
+                pass
             cv2.namedWindow(self.win_src, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(self.win_src, 960, 540)
             cv2.namedWindow(self.win_bev, cv2.WINDOW_NORMAL)
@@ -30,20 +31,19 @@ class LaneCurvatureNode:
 
         # === ROS IO ===
         self.bridge = CvBridge()
-        # self.sub = rospy.Subscriber("/usb_cam/image_rect_color", Image, self.cb_image,
-        #                             queue_size=2, buff_size=2**24)
-        self.sub = rospy.Subscriber("/image_jpeg/compressed", Image, self.cb_image,
+        self.sub = rospy.Subscriber("/usb_cam/image_rect_color", Image, self.cb_image,
                                     queue_size=2, buff_size=2**24)
 
         # pub --> controller
-        # 1.곡률
-        self.pub_k_left   = rospy.Publisher("/perception/curvature_left",   Float32, queue_size=1)
-        self.pub_k_right  = rospy.Publisher("/perception/curvature_right",  Float32, queue_size=1)
-        self.pub_k_center = rospy.Publisher("/perception/curvature_center", Float32, queue_size=1)
-        # 2.차선 중심
+        # 1. 곡률 없음 (삭제)
+
+        # 2. 차선 중심
         self.pub_center_point = rospy.Publisher("/perception/center_point_px", PointStamped, queue_size=1)
         self.lane_width_px = rospy.get_param("~lane_width_px", 340.0)  # BEV에서의 차선 폭(px) 추정치
 
+        # 3. 차로 색 (미션1용)
+        self.pub_center_color = rospy.Publisher("/perception/center_color_px",
+                                                PointStamped, queue_size=1)
 
         # === Sliding-window params ===
         self.num_windows = rospy.get_param("~num_windows", 12)
@@ -63,8 +63,22 @@ class LaneCurvatureNode:
         # === Color thresholds (HSV) ===
         self.yellow_lower = np.array([10,  80,  60], dtype=np.uint8)
         self.yellow_upper = np.array([45, 255, 255], dtype=np.uint8)
-        self.white_lower  = np.array([ 0,   0, 160], dtype=np.uint8) # WHITE 튜닝 해야 함,,
-        self.white_upper  = np.array([179,  80, 255], dtype=np.uint8)
+        self.white_lower  = np.array([ 0,   0, 150], dtype=np.uint8)
+        self.white_upper  = np.array([179,  60, 255], dtype=np.uint8)
+
+        # === Mission1: 빨간 / 파란 차로 HSV 범위 (OpenCV: H 0~179) ===
+        # 빨강은 0~10, 160~179 두 구간 OR
+        self.red_lower1 = np.array([  0,  80,  80], dtype=np.uint8)
+        self.red_upper1 = np.array([ 10, 255, 255], dtype=np.uint8)
+        self.red_lower2 = np.array([160,  80,  80], dtype=np.uint8)
+        self.red_upper2 = np.array([179, 255, 255], dtype=np.uint8)
+
+        # 파랑은 100~130 근처 H
+        self.blue_lower = np.array([100, 120,  80], dtype=np.uint8)
+        self.blue_upper = np.array([130, 255, 255], dtype=np.uint8)
+
+        # Mission1: 픽셀 수 최소 임계값
+        self.mission1_min_pixel = rospy.get_param("~mission1_min_pixel", 500)
 
     # ---------------- Core helpers ----------------
     def make_roi_polygon(self, h, w):
@@ -82,7 +96,7 @@ class LaneCurvatureNode:
         """ROI 사다리꼴을 이미지 전체 직사각형으로 펴서(BEV) 반환"""
         h, w = bgr.shape[:2]
         BL, TL, TR, BR = roi_poly.astype(np.float32)
-``
+
         # y는 유효 영역으로 클리핑 (x는 일부 화면 밖을 허용)
         for p in (BL, TL, TR, BR):
             p[1] = np.clip(p[1], 0, h - 1)
@@ -95,6 +109,55 @@ class LaneCurvatureNode:
                                   borderMode=cv2.BORDER_CONSTANT,
                                   borderValue=(0, 0, 0))
         return bev
+
+    # === Mission1: BEV 상에서 빨간/파란 차로 판별 함수 ===
+    def mission1_detect_center_color(self, bev_bgr):
+        """
+        BEV 이미지에서 중앙 하단 ROI를 잡고 빨간/파란 픽셀 수를 비교하여
+        lane_color_code, lane_color_str, roi, mask_red, mask_blue 반환
+        - lane_color_code: 0=none(검정), 1=red, 2=blue
+        """
+        h, w = bev_bgr.shape[:2]
+        hsv = cv2.cvtColor(bev_bgr, cv2.COLOR_BGR2HSV)
+
+        # 빨강은 두 구간 OR
+        mask_red1 = cv2.inRange(hsv, self.red_lower1, self.red_upper1)
+        mask_red2 = cv2.inRange(hsv, self.red_lower2, self.red_upper2)
+        mask_red  = cv2.bitwise_or(mask_red1, mask_red2)
+
+        # 파랑
+        mask_blue = cv2.inRange(hsv, self.blue_lower, self.blue_upper)
+
+        # 노이즈 제거용 모폴로지
+        kernel = np.ones((3, 3), np.uint8)
+        mask_red  = cv2.morphologyEx(mask_red,  cv2.MORPH_OPEN, kernel, iterations=1)
+        mask_blue = cv2.morphologyEx(mask_blue, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        # BEV 중앙 하단 영역만 사용
+        x1 = int(0.25 * w)
+        x2 = int(0.75 * w)
+        y1 = int(0.5 * h)
+        y2 = h
+
+        roi_red  = mask_red[y1:y2, x1:x2]
+        roi_blue = mask_blue[y1:y2, x1:x2]
+
+        red_count  = int(cv2.countNonZero(roi_red))
+        blue_count = int(cv2.countNonZero(roi_blue))
+
+        lane_color_code = 0
+        lane_color_str  = "none"
+
+        if red_count > self.mission1_min_pixel or blue_count > self.mission1_min_pixel:
+            if red_count > blue_count:
+                lane_color_code = 1
+                lane_color_str  = "red"
+            else:
+                lane_color_code = 2
+                lane_color_str  = "blue"
+
+        roi = (x1, y1, x2, y2)
+        return lane_color_code, lane_color_str, roi, mask_red, mask_blue
 
     def binarize_lanes(self, bgr):
         """노랑/흰색 차선 마스크 합성 (HSV 기반)"""
@@ -165,8 +228,10 @@ class LaneCurvatureNode:
             # 좌/우가 너무 붙었을 때 한쪽 억제
             if left_current is not None and right_current is not None:
                 if abs(left_current - right_current) < self.min_lane_sep:
-                    if len(good_left) < len(good_right): good_left = []
-                    else: good_right = []
+                    if len(good_left) < len(good_right):
+                        good_left = []
+                    else:
+                        good_right = []
 
             left_indices.extend(good_left)
             right_indices.extend(good_right)
@@ -204,25 +269,6 @@ class LaneCurvatureNode:
 
         return debug_img, left_window_centers, right_window_centers
 
-    def compute_curvature_from_centers(self, centers, image_height):
-        """
-        중심점들( (y, x) 리스트 )만을 사용해서 2차 다항 x(y)=ay^2+by+c 피팅 후
-        하단 y=h-1에서 곡률 kappa = |x''| / (1 + x'^2)^(3/2) 계산. (단위: 1/px)
-        중심점이 너무 적으면 None 반환.
-        """
-        if len(centers) < 5:
-            return None, None  # (fit, curvature)
-        ys = np.array([p[0] for p in centers], dtype=np.float64)
-        xs = np.array([p[1] for p in centers], dtype=np.float64)
-
-        fit = np.polyfit(ys, xs, 2)  # x = a y^2 + b y + c
-        a, b, c = fit
-        y_eval = float(image_height - 1)
-        dxdy = 2*a*y_eval + b
-        d2xdy2 = 2*a
-        curvature = abs(d2xdy2) / ((1.0 + dxdy*dxdy) ** 1.5)  # [1/px]
-        return fit, curvature
-
     def compute_center_point(self, left_window_centers, right_window_centers, image_height):
         """
         대표점(좌/우)을 '전체 윈도우 평균'으로 계산한 뒤,
@@ -242,7 +288,7 @@ class LaneCurvatureNode:
         left_rep  = side_mean(left_window_centers)
         right_rep = side_mean(right_window_centers)
 
-        # 차선 폭 절반(px) — 파라미터로 받아두는 걸 권장 (예: 340px 기준)
+        # 차선 폭 절반(px)
         half_w = 0.5 * float(self.lane_width_px)
 
         # 둘 다 보이면: 단순 평균
@@ -260,25 +306,20 @@ class LaneCurvatureNode:
         # 아무것도 없으면
         return None
 
-            
-
-    def draw_polynomial(self, canvas, fit, color=(255, 255, 0), step=10):
-        """피팅된 x(y)를 캔버스 위에 점으로 표시"""
-        h = canvas.shape[0]
-        ploty = np.arange(0, h, step, dtype=np.int32)
-        fitx = (fit[0]*ploty**2 + fit[1]*ploty + fit[2]).astype(np.int32)
-        for y, x in zip(ploty, fitx):
-            cv2.circle(canvas, (int(x), int(y)), 2, color, -1)
-
     # ---------------- ROS callback ----------------
     def cb_image(self, msg):
         try:
             bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-            if bgr is None: return
+            if bgr is None:
+                return
             if bgr.ndim == 2 or (bgr.ndim == 3 and bgr.shape[2] == 1):
                 bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
 
             h, w = bgr.shape[:2]
+
+            # 카메라 프레임 중심 좌표
+            cx_cam = w // 2
+            cy_cam = h // 2
 
             # 1) ROI 폴리곤 & 시각화
             roi_poly = self.make_roi_polygon(h, w)
@@ -287,6 +328,9 @@ class LaneCurvatureNode:
             cv2.fillPoly(overlay, [roi_poly], (0, 255, 0))
             src_vis = cv2.addWeighted(overlay, 0.25, bgr, 0.75, 0)
             cv2.polylines(src_vis, [roi_poly], True, (0, 0, 0), 2)
+
+            # ★ 카메라 프레임 중심 표시 (보라색 점) ★
+            cv2.circle(src_vis, (cx_cam, cy_cam), 6, (255, 0, 255), -1)
 
             # 2) BEV (ROI 전체를 프레임 전체로 펴기)
             bev_bgr = self.warp_to_bev(bgr, roi_poly)
@@ -298,80 +342,57 @@ class LaneCurvatureNode:
             debug_img, left_window_centers, right_window_centers = \
                 self.run_sliding_window_collect_centers(bev_binary)
 
-            # 5) 중심점만으로 곡률 계산 (좌/우)
-            # left_fit: 좌측 차선 2차 다항 계수 : x_left(y)  = a_L*y*y + b_L*y + c_L
-            # right_fit: 우측 차선 2차 다항 계수 : x_right(y) = a_R*y*y + b_R*y + c_R
-            left_fit, left_curvature = self.compute_curvature_from_centers(
-                left_window_centers, image_height=bev_binary.shape[0])
-            right_fit, right_curvature = self.compute_curvature_from_centers(
-                right_window_centers, image_height=bev_binary.shape[0])
-        
-
-            # 6) (선택) 중앙선 = 좌/우 평균 (둘 다 있을 때)
-            center_fit = None
-            center_curvature = None
-            if left_fit is not None and right_fit is not None:
-                center_fit = 0.5*(left_fit + right_fit)
-                # 중앙선 곡률
-                a, b, c = center_fit
-                y_eval = float(bev_binary.shape[0] - 1)
-                dxdy = 2*a*y_eval + b
-                d2xdy2 = 2*a
-                center_curvature = abs(d2xdy2) / ((1.0 + dxdy*dxdy) ** 1.5)
-            # --------------------------------------------------------------------------------
-            # 퍼블리시
-            # self.pub_k_left.publish(left_curvature if left_curvature is not None else float('nan'))
-            # self.pub_k_right.publish(right_curvature if right_curvature is not None else float('nan'))
-            # self.pub_k_center.publish(center_curvature if center_curvature is not None else float('nan'))
-            #--> 단순화,  ======= PUBLISH (Float32로 감싸서 송출) =======  # CHANGED
-            def curv_msg(v): 
-                return Float32(data=float(v)) if (v is not None and np.isfinite(float(v))) else Float32(data=float('nan'))
-
-            self.pub_k_left.publish(curv_msg(left_curvature))
-            self.pub_k_right.publish(curv_msg(right_curvature))
-            self.pub_k_center.publish(curv_msg(center_curvature))
-
-            center_point = self.compute_center_point(left_window_centers, right_window_centers, bev_binary.shape[0])
+            # 5) 차선 중심 퍼블리시
+            center_point = self.compute_center_point(left_window_centers, right_window_centers,
+                                                     bev_binary.shape[0])
             if center_point is not None:
                 cy, cx = center_point
                 pt_msg = PointStamped()
                 pt_msg.header.stamp = msg.header.stamp
-                pt_msg.header.frame_id = "bev"   # ★ BEV 픽셀 좌표계 명시 (x→오른쪽, y→아래)
+                pt_msg.header.frame_id = "bev"   # BEV 픽셀 좌표계
                 pt_msg.point.x = float(cx)
                 pt_msg.point.y = float(cy)
                 pt_msg.point.z = 0.0
                 self.pub_center_point.publish(pt_msg)
                 cv2.circle(debug_img, (int(cx), int(cy)), 6, (255, 0, 255), -1)
 
+            # 6) === Mission1: 차로 색 판별 + 퍼블리시 ===
+            lane_color_code, lane_color_str, roi, mask_red, mask_blue = \
+                self.mission1_detect_center_color(bev_bgr)
 
-            # --------------------------------------------------------------------------------
-                
-            # 7) 피팅 시각화 (옵션)
-            if left_fit is not None:
-                self.draw_polynomial(debug_img, left_fit, (0, 0, 255), step=10)
-            if right_fit is not None:
-                self.draw_polynomial(debug_img, right_fit, (0, 255, 0), step=10)
-            if center_fit is not None:
-                self.draw_polynomial(debug_img, center_fit, (255, 0, 255), step=10)
+            color_msg = PointStamped()
+            color_msg.header.stamp = msg.header.stamp
+            color_msg.header.frame_id = "lane_color"
+            color_msg.point.x = float(lane_color_code)  # 0,1,2
+            color_msg.point.y = 0.0
+            color_msg.point.z = 0.0
+            self.pub_center_color.publish(color_msg)
 
-            # 8) 텍스트 오버레이 (cv2 디버그용)
+            # 디버그용 ROI 박스
+            x1, y1, x2, y2 = roi
+            color_box = (0, 255, 255)
+            if lane_color_code == 1:      # red
+                color_box = (0, 0, 255)
+            elif lane_color_code == 2:    # blue
+                color_box = (255, 0, 0)
+            cv2.rectangle(debug_img, (x1, y1), (x2, y2), color_box, 2)
+
+            # 7) 텍스트 오버레이 (cv2 디버그용)
             def put(txt, y):
                 cv2.putText(debug_img, txt, (10, y), cv2.FONT_HERSHEY_SIMPLEX,
                             0.6, (255,255,255), 2, cv2.LINE_AA)
 
             put(f"Left centers:  {len(left_window_centers)}", 24)
             put(f"Right centers: {len(right_window_centers)}", 48)
-            put(f"Curvature Left:{left_curvature if left_curvature is not None else np.nan:.4e} "
-                f"Curvature Right:{right_curvature if right_curvature is not None else np.nan:.4e} "
-                f"Curvature Center:{center_curvature if center_curvature is not None else np.nan:.4e}", 72)
+            put(f"Mission1 CenterColor: {lane_color_str} (code={lane_color_code})", 72)
 
-            # 9) 화면 표시
+            # 8) 화면 표시
             if self.show_window:
                 canvas = np.hstack([
                     cv2.resize(src_vis, (w, h)),
                     cv2.resize(debug_img, (w, h))
                 ])
-                cv2.imshow(self.win_src, canvas)       # 좌: ROI오버레이, 우: 디텍션/피팅
+                cv2.imshow(self.win_src, canvas)       # 좌: ROI/센터, 우: 디텍션
                 cv2.imshow(self.win_bev, bev_binary)   # BEV 이진화만 단독 확인용
                 cv2.waitKey(1)
 
