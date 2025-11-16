@@ -14,7 +14,7 @@
     <param name="show_window" value="$(arg show_window)"/>
 
     <!-- white ratio threshold (0~1, 예: 0.1 = 10%) -->
-    <param name="white_ratio_threshold" value="0.1"/>
+    <param name="white_ratio_threshold" value="0.01"/>
     <!-- 정지 유지 시간 (초) -->
     <param name="stop_duration" value="7.0"/>
   </node>

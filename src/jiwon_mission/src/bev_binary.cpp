@@ -1,3 +1,4 @@
+// bev_binary_node.py -> bev_binary_node.cpp
 // C++ version of BevBinaryNode (ROI + BEV + white binary publishing)
 
 #include <ros/ros.h>
