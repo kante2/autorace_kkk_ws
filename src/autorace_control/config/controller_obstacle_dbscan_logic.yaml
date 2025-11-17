@@ -1,0 +1,18 @@
+# config/obstacle_dbscan.yaml
+
+# --- DBSCAN 파라미터 ---
+eps: 0.2                # 클러스터 간 거리 (m)
+min_samples: 2          # 최소 점 개수
+
+# --- 사용 거리 범위 ---
+range_min: 0.13         # 최소 거리 (m)
+range_max: 0.90         # 최대 거리 (m)
+
+# --- 사용 각도 (LaserScan 0~360 deg 기준) ---
+front_min_deg: 60.0     # 전방 시작 각도 (deg)
+front_max_deg: 300.0    # 전방 끝 각도 (deg)
+
+# --- 속도 / 조향 파라미터 ---
+follow_speed_mps: 1.0   # 정상 회피 주행 속도 [m/s]
+min_speed_mps: 0.3      # 타겟 없을 때 천천히 전진 [m/s]
+k_yaw: 1.2              # yaw → steer_cmd 게인

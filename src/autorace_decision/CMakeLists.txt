@@ -8,6 +8,8 @@ find_package(catkin REQUIRED COMPONENTS
   morai_msgs
   rosbag
   visualization_msgs
+  laser_geometry
+  autorace_control # control부 패키지 추가,,
 )
 
 catkin_package()

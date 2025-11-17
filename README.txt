@@ -10,6 +10,32 @@ sudo apt install ros-$ROS_DISTRO-rosbridge-suite
 roslaunch rosbridge_server rosbridge_websocket.launch
 
 
+-----------------------------------------
+
+<정리중,,, >
+
+PERCEPTION/ 부분은, 센서의 전처리, 센서가 넘겨줘야 하는 값들을 넣어놓았다.
+CONTROL/ 부분은, 제어에 관한 기능을 넣어놓았다.
+DECISION/ 부분은, 미션별로 분기해놓았고, MAIN_NODE가 제어한다.
+각 미션별 디버깅을 위해서 LAUNCH로 각각 실행할 수 있게끔 처리하였다.
+
+센서 부분을 키고 -> DECISION에 있는 LAUNCH를 실행하여 각 미션을 확인한다.
+값 튜닝은 CONTROL의 YAML을 변경하면 된다.
+
+1117은, old version,,
+
+
+
+-----------------------------------------
+
+
+
+
+
+
+
+
+
 
 # ------------install 해야 하는 것들 -------------
 sudo apt update

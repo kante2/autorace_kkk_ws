@@ -1,0 +1,41 @@
+# ===== Topic 이름들 =====
+topic_center_point: "/perception/center_point_px"
+topic_dx_px: "/perception/dx_px"            # 참고용
+motor_topic: "/commands/motor/speed"
+servo_topic: "/commands/servo/position"
+is_crosswalk_topic: "/perception/is_crosswalk"
+topic_curvature_center: "/perception/curvature_center"
+
+# ===== BEV 중심 x 픽셀 =====
+bev_center_x_px: 320.0
+
+# ===== 서보 스케일 =====
+servo_center: 0.5
+servo_min: 0.0
+servo_max: 1.0
+steer_sign: -1.0        # 조향 방향 반전 여부
+
+# ===== Control 파라미터 (dx -> steer) =====
+max_abs_dx_px: 83.0
+dx_tolerance: 3.0
+steer_gain: 1.5              # 초기 gain (곡률에 따라 실시간 변경됨)
+steer_smoothing_alpha: 0.2   # EMA alpha
+max_steer_delta_per_cycle: 0.08
+
+# ===== 속도 계획 =====
+base_speed_mps: 7.0
+min_speed_mps: 0.8
+speed_drop_gain: 0.5
+
+# ===== 모터 스케일 =====
+motor_min_cmd: 0.0
+motor_max_cmd: 900.0
+motor_gain: 300.0
+
+# ===== 타임아웃 =====
+dx_timeout_sec: 1.0
+
+# ===== 곡률 범위 파라미터 (튜닝 포인트) =====
+# 직선에 가까운 작은 곡률 ~ 코너에서 큰 곡률 구간
+min_curvature: 0.0003    # 3e-4
+max_curvature: 0.0015    # 1.5e-3
