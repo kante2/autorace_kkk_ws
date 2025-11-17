@@ -10,6 +10,10 @@
   <!-- Build tool -->
   <buildtool_depend>catkin</buildtool_depend>
 
+  <!-- 메시지 생성 -->
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+
   <!-- Core deps -->
   <depend>roscpp</depend>
   <depend>std_msgs</depend>
@@ -30,6 +34,10 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_sensor_msgs</depend>
+
+  <!-- Viz / Laser -->
+  <depend>visualization_msgs</depend>
+  <depend>laser_geometry</depend>
 
   <!-- PCL (★ 에러 해결을 위해 추가) -->
   <depend>pcl_ros</depend>

@@ -5,14 +5,24 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   nav_msgs
   geometry_msgs
+  std_msgs
   morai_msgs
   rosbag
   visualization_msgs
-  laser_geometry
-  autorace_control # control부 패키지 추가,,
+  autorace_perception
 )
 
-catkin_package()
+
+catkin_package(
+  CATKIN_DEPENDS
+    roscpp
+    nav_msgs
+    geometry_msgs
+    std_msgs
+    morai_msgs
+    visualization_msgs
+    autorace_perception
+)
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
@@ -30,5 +40,10 @@ include_directories(
 add_executable(main_node src/main_node.cpp)
 target_compile_features(main_node PRIVATE cxx_std_11)
 target_link_libraries(main_node ${catkin_LIBRARIES})
+
+add_executable(mission_gate src/mission_gate.cpp)
+target_compile_features(mission_gate PRIVATE cxx_std_11)
+target_link_libraries(mission_gate ${catkin_LIBRARIES})
+
 
 
