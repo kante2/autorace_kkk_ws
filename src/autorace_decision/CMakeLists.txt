@@ -10,6 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   rosbag
   visualization_msgs
   autorace_perception
+  laser_geometry
+  autorace_control # control부 패키지 추가,,
 )
 
 
