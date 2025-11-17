@@ -5,11 +5,19 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   nav_msgs
   geometry_msgs
+  std_msgs
   morai_msgs
   rosbag
 )
 
-catkin_package()
+catkin_package(
+  CATKIN_DEPENDS
+    roscpp
+    nav_msgs
+    geometry_msgs
+    std_msgs
+    morai_msgs
+)
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
@@ -23,3 +31,8 @@ include_directories(
 add_executable(controller_from_center_wego_ src/controller_from_center_wego_.cpp)
 target_compile_features(controller_from_center_wego_ PRIVATE cxx_std_11)
 target_link_libraries(controller_from_center_wego_ ${catkin_LIBRARIES})
+
+add_executable(mission_gate_control src/mission_gate_control.cpp)
+target_compile_features(mission_gate_control PRIVATE cxx_std_11)
+target_link_libraries(mission_gate_control ${catkin_LIBRARIES})
+
