@@ -29,14 +29,9 @@ include_directories(
 # target_compile_features(ego_path_recorder PRIVATE cxx_std_11)
 # target_link_libraries(ego_path_recorder ${catkin_LIBRARIES})
 
-add_executable(controller_from_center_wego_ src/controller_from_center_wego_.cpp)
-target_compile_features(controller_from_center_wego_ PRIVATE cxx_std_11)
-target_link_libraries(controller_from_center_wego_ ${catkin_LIBRARIES})
-
-add_executable(mission_gate_control src/mission_gate_control.cpp)
-target_compile_features(mission_gate_control PRIVATE cxx_std_11)
-target_link_libraries(mission_gate_control ${catkin_LIBRARIES})
-
+#add_executable(controller_from_center_wego_ src/controller_from_center_wego_.cpp)
+#target_compile_features(controller_from_center_wego_ PRIVATE cxx_std_11)
+#target_link_libraries(controller_from_center_wego_ ${catkin_LIBRARIES})
 
 add_executable(controller_lane_logic src/controller_lane_logic.cpp)
 target_compile_features(controller_lane_logic PRIVATE cxx_std_11)
