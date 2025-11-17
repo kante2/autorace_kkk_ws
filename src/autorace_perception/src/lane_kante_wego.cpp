@@ -8,14 +8,21 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+
+#include <std_msgs/Bool.h>
 
 // -------------------- 전역 상태 --------------------
 ros::Publisher g_pub_center_point;
 ros::Publisher g_pub_center_color;
+ros::Publisher g_pub_is_cross_walk;  // g_pub_go_straight → g_pub_is_cross_walk
 
-bool   g_show_window = true;
+bool g_show_window = true;
 std::string g_win_src = "src_with_roi";
 std::string g_win_bev = "bev_binary_and_windows";
+
+// init ----------------------------------------------
+bool is_cross_walk = false;          // is_go_straight → is_cross_walk
 
 // 파라미터
 double g_lane_width_px = 340.0;
@@ -49,6 +56,12 @@ cv::Scalar g_red_upper2(179, 255, 255);
 cv::Scalar g_blue_lower(100, 120, 80);
 cv::Scalar g_blue_upper(130, 255, 255);
 
+// 정지선 관련 전역 변수
+double    g_white_ratio_threshold = 0.25;  // 흰색 비율 threshold
+bool      g_stop_active           = false; // 현재 정지 중인지 여부
+ros::Time g_stop_start_time;              // 정지 시작 시간
+double    g_stop_duration         = 7.0;   // 정지 유지 시간(초)
+
 // -------------------- 구조체 정의 --------------------
 struct LaneColorResult {
   int code;           // 0=none, 1=red, 2=blue
@@ -58,7 +71,57 @@ struct LaneColorResult {
   cv::Mat mask_blue;
 };
 
+// --------------------- compute --------------------------
+double computeWhiteRatio(const cv::Mat& binary)
+{
+  int h = binary.rows;
+  int w = binary.cols;
+
+  if (w <= 0 || h <= 0) {
+    return 0.0;
+  }
+
+  const int total_pixels = w * h;
+  const int total_white  = cv::countNonZero(binary);
+  const double white_ratio = static_cast<double>(total_white) /
+                             static_cast<double>(total_pixels);
+
+  ROS_INFO_THROTTLE(1.0, "[stopline_node] white_ratio=%.3f thr=%.3f",
+                    white_ratio, g_white_ratio_threshold);
+  return white_ratio;
+}
+
+void compute_StopState(double white_ratio, const ros::Time& now)
+{
+  const bool can_start  = (!g_stop_active) &&
+                          (white_ratio > g_white_ratio_threshold);
+  const bool can_finish = g_stop_active &&
+                          !g_stop_start_time.isZero() &&
+                          (now - g_stop_start_time).toSec() >= g_stop_duration;
+
+  if (can_start)
+  {
+    g_stop_active     = true;
+    g_stop_start_time = now;
+    ROS_INFO("[stopline_node] STOP TRIGGERED (white_ratio=%.3f)", white_ratio);
+  }
+
+  if (can_finish)
+  {
+    g_stop_active     = false;
+    g_stop_start_time = ros::Time(0);
+    ROS_INFO("[stopline_node] STOP RELEASED (duration done)");
+  }
+}
+
 // -------------------- 헬퍼 함수들 --------------------
+void pub_go_straight_cmd(const ros::Publisher& pub, bool go_straight)
+{
+  std_msgs::Bool msg;
+  msg.data = go_straight;  // 여기서는 bool 값만 전달(이제 is_cross_walk가 들어감)
+  pub.publish(msg);
+}
+
 void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
 {
   int y_top = static_cast<int>(h * g_roi_top_y_ratio);
@@ -153,10 +216,10 @@ LaneColorResult mission1DetectCenterColor(const cv::Mat& bev_bgr)
   if (red_count > g_mission1_min_pixel || blue_count > g_mission1_min_pixel) {
     if (red_count > blue_count) {
       res.code = 1;
-      res.name = "red";
+      res.name = "red"; // res.code = 1 -> 빨강
     } else {
       res.code = 2;
-      res.name = "blue";
+      res.name = "blue"; // res.code = 2 -> 파랑
     }
   }
 
@@ -199,7 +262,7 @@ void runSlidingWindowCollectCenters(const cv::Mat& binary_mask,
   cv::Mat hist;
   cv::reduce(lower, hist, 0, cv::REDUCE_SUM, CV_32S);  // 1 x w
 
-  int midpoint = w / 2;
+  int midpoint   = w / 2;
   int left_base  = -1;
   int right_base = -1;
 
@@ -289,7 +352,7 @@ void runSlidingWindowCollectCenters(const cv::Mat& binary_mask,
       }
     }
 
-    left_indices.insert(left_indices.end(), good_left.begin(), good_left.end());
+    left_indices.insert(left_indices.end(),  good_left.begin(),  good_left.end());
     right_indices.insert(right_indices.end(), good_right.begin(), good_right.end());
 
     int y_center = (y_low + y_high) / 2;
@@ -437,8 +500,46 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     // 2) BEV
     cv::Mat bev_bgr = warpToBev(bgr, roi_poly_pts);
 
+    // ------------------------------------------------------------
     // 3) 이진화
     cv::Mat bev_binary = binarizeLanes(bev_bgr);
+
+    // 3-1) 횡단보도(정지선) 인식: 흰색 비율 계산
+    double white_ratio = computeWhiteRatio(bev_binary);
+
+    // 3-2) 정지 상태 업데이트 (7초 정지 등)
+    ros::Time now = ros::Time::now();
+    compute_StopState(white_ratio, now);
+
+    // 3-3) 정지 상태가 끝난 후 2초간 플래그 ON
+    static bool      last_stop_active      = false;
+    static ros::Time go_straight_start_time;
+
+    // 정지 중이었다가 방금 풀린 순간
+    if (last_stop_active && !g_stop_active)
+    {
+      is_cross_walk         = true;          // is_go_straight → is_cross_walk
+      go_straight_start_time = now;
+      ROS_INFO("[stopline_node] go_straight START (2s)");
+    }
+
+    // 플래그 상태에서 2초가 지나면 OFF
+    if (is_cross_walk)
+    {
+      double dt = (now - go_straight_start_time).toSec();
+      if (dt >= 2.0)
+      {
+        is_cross_walk = false;
+        ROS_INFO("[stopline_node] go_straight END");
+      }
+    }
+
+    // 현재 is_cross_walk 값을 퍼블리시
+    pub_go_straight_cmd(g_pub_is_cross_walk, is_cross_walk);
+    // ------------------------------------------------------------
+
+    // 다음 프레임을 위한 상태 저장
+    last_stop_active = g_stop_active;
 
     // 4) 슬라이딩 윈도우
     cv::Mat debug_img;
@@ -463,7 +564,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
                  6, cv::Scalar(255, 0, 255), -1);
     }
 
-    // 6) Mission1: 차로 색 판별 + 퍼블리시
+    // 6) Mission_1: 차로 색 판별 + 퍼블리시
     LaneColorResult lc = mission1DetectCenterColor(bev_bgr);
 
     geometry_msgs::PointStamped color_msg;
@@ -541,14 +642,17 @@ int main(int argc, char** argv)
 
   pnh.param<int>("mission1_min_pixel", g_mission1_min_pixel, 500);
 
-  // Pub/Sub
-  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2,
-                                         imageCB);
+  pnh.param<double>("white_ratio_threshold", g_white_ratio_threshold, 0.25);
+  pnh.param<double>("stop_duration",        g_stop_duration,        7.0);
 
-  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>(
-      "/perception/center_point_px", 1);
-  g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>(
-      "/perception/center_color_px", 1);
+  // Pub/Sub
+  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+
+  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
+  g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1); // 0=none,1=red,2=blue
+  g_pub_is_cross_walk  = nh.advertise<std_msgs::Bool>("/perception/go_straight_cmd", 1);
+  // ↑ 토픽 이름은 그대로 /perception/go_straight_cmd 쓰고,
+  //   퍼블리셔/플래그 이름만 is_cross_walk 로 사용 중
 
   if (g_show_window) {
     cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);

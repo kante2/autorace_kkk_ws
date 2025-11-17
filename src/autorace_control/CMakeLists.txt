@@ -15,20 +15,11 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-
-# add_executable(ego_path_recorder_bag_kante src/ego_path_recorder_bag_kante.cpp)
-# target_compile_features(ego_path_recorder_bag_kante PRIVATE cxx_std_11)
-# target_link_libraries(ego_path_recorder_bag_kante ${catkin_LIBRARIES})
-
-# add_executable(ego_path_recorder_csv_kante src/ego_path_recorder_csv_kante.cpp)
-# target_compile_features(ego_path_recorder_csv_kante PRIVATE cxx_std_11)
-# target_link_libraries(ego_path_recorder_csv_kante ${catkin_LIBRARIES})
-
-add_executable(ego_path_recorder src/ego_path_recorder.cpp)
-target_compile_features(ego_path_recorder PRIVATE cxx_std_11)
-target_link_libraries(ego_path_recorder ${catkin_LIBRARIES})
+# ego_path_recorder는 소스 파일이 없으므로 잠시 비활성화
+# add_executable(ego_path_recorder src/ego_path_recorder.cpp)
+# target_compile_features(ego_path_recorder PRIVATE cxx_std_11)
+# target_link_libraries(ego_path_recorder ${catkin_LIBRARIES})
 
 add_executable(controller_from_center_wego_ src/controller_from_center_wego_.cpp)
 target_compile_features(controller_from_center_wego_ PRIVATE cxx_std_11)
 target_link_libraries(controller_from_center_wego_ ${catkin_LIBRARIES})
-

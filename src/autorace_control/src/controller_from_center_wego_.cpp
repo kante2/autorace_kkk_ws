@@ -2,6 +2,7 @@
 #include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/PointStamped.h>
+#include <std_msgs/Bool.h>
 
 #include <cmath>
 #include <string>
@@ -19,6 +20,8 @@ std::string g_topic_center_point;
 std::string g_topic_dx_px;   // 참고용(실제 구독 X)
 std::string g_motor_topic;
 std::string g_servo_topic;
+std::string g_is_crosswalk_topic;
+std::string g_topic_curvature_center;   // ★ center curvature 토픽 이름
 
 // BEV 중심 x 픽셀
 double g_bev_center_x_px = 320.0;
@@ -30,9 +33,9 @@ double g_servo_max    = 1.0;
 double g_steer_sign   = -1.0;  // 파이썬 기본값
 
 // Control 파라미터
-double g_max_abs_dx_px = 100.0;
+double g_max_abs_dx_px = 83.0; // 100 -> 83
 double g_dx_tolerance  = 3.0;
-double g_steer_gain    = 2.0;
+double g_steer_gain    = 1.5;    // 이 값이 center_curvature에 따라 실시간으로 변함
 double g_alpha_ema     = 0.2;
 double g_max_delta     = 0.08;
 
@@ -59,6 +62,17 @@ double g_latest_steer_cmd  = 0.0;
 double g_latest_speed_cmd  = 0.0;
 ros::Time g_last_cb_time;
 bool g_have_cb_time = false;
+
+// crosswalk 상태
+bool      g_is_crosswalk            = false;   // 토픽에서 받은 flag
+bool      g_crosswalk_timer_running = false;   // 7초 타이머 동작 여부
+ros::Time g_crosswalk_start_time;             // 7초 타이머 시작 시각
+
+// 곡률 범위 파라미터
+double g_min_curv = 3e-4;    // 최소 곡률 (예: 직선에 가까움)
+double g_max_curv = 1.5e-3;   // 최대 곡률 (예: 많이 휘어짐)
+
+
 
 // -------------------- dx 처리 로직 --------------------
 void processDx(double dx)
@@ -90,8 +104,8 @@ void processDx(double dx)
   g_latest_speed_cmd = speed_cmd;   // m/s 개념
 
   ROS_INFO_THROTTLE(0.5,
-    "[lane_ctrl][CB] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f",
-    dx, err_norm, steer_cmd, speed_cmd);
+    "[lane_ctrl][CB] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f (steer_gain=%.3f)",
+    dx, err_norm, steer_cmd, speed_cmd, g_steer_gain);
 }
 
 // -------------------- 콜백: center_point_px --------------------
@@ -106,6 +120,48 @@ void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
 
   processDx(dx);
 }
+
+// -------------------- 콜백: is_crosswalk --------------------
+void crosswalkCB(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_is_crosswalk = msg->data;
+}
+
+// -------------------- 콜백: curvature_center --------------------
+void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg)
+{
+  double center_curv = msg->data;
+
+  double denom = (g_max_curv - g_min_curv);
+  if (denom == 0.0) {
+    ROS_WARN_THROTTLE(1.0, "[lane_ctrl] (max_curv - min_curv) == 0, skip curvature scaling");
+    return;
+  }
+
+  // 1) 중심곡률 > 최대곡률
+  //    steer_gain = steer_gain * 1 + { (center_curvature - max_curvature) / (max_curv - min_curv)}
+  if (center_curv > g_max_curv) {
+    double ratio = (center_curv - g_max_curv) / denom;
+    g_steer_gain = g_steer_gain * 1.0 + ratio;
+  }
+  // 2) 중심곡률 < 최소곡률
+  //    -> 여기서도 2번 식 그대로 쓰고 싶으면 min보다 작을 때도 같은 식 사용
+  else if (center_curv < g_min_curv) {
+    double ratio = (g_max_curv - center_curv) / denom;
+    g_steer_gain = g_steer_gain * ratio;
+  }
+  // 3) 임계 사이 (min_curv <= center_curv <= max_curv)
+  //    -> 2번과 같은 식
+  else {
+    double ratio = (g_max_curv - center_curv) / denom;
+    g_steer_gain = g_steer_gain * ratio;
+  }
+
+  ROS_INFO_THROTTLE(0.5,
+    "[lane_ctrl] center_curv=%.4e (min=%.4e, max=%.4e) -> steer_gain=%.3f",
+    center_curv, g_min_curv, g_max_curv, g_steer_gain);
+}
+
 
 // -------------------- main --------------------
 int main(int argc, char** argv)
@@ -130,8 +186,22 @@ int main(int argc, char** argv)
   pnh.param<std::string>("servo_topic", g_servo_topic,
                          std::string("/commands/servo/position"));
 
+  // is_crosswalk topic
+  pnh.param<std::string>("is_crosswalk_topic",
+                         g_is_crosswalk_topic,
+                         std::string("/perception/is_crosswalk"));
+
+  // curvature_center topic
+  pnh.param<std::string>("topic_curvature_center",
+                         g_topic_curvature_center,
+                         std::string("/perception/curvature_center"));
+
   ROS_INFO("[lane_ctrl] subscribe center='%s'",
            ros::names::resolve(g_topic_center_point).c_str());
+  ROS_INFO("[lane_ctrl] subscribe is_crosswalk='%s'",
+           ros::names::resolve(g_is_crosswalk_topic).c_str());
+  ROS_INFO("[lane_ctrl] subscribe curvature_center='%s'",
+           ros::names::resolve(g_topic_curvature_center).c_str());
   ROS_INFO("[lane_ctrl] publish motor='%s', servo='%s'",
            ros::names::resolve(g_motor_topic).c_str(),
            ros::names::resolve(g_servo_topic).c_str());
@@ -146,9 +216,9 @@ int main(int argc, char** argv)
   pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
   // Control params
-  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 100.0);
+  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 83.0); // 83,
   pnh.param<double>("dx_tolerance",  g_dx_tolerance,  3.0);
-  pnh.param<double>("steer_gain",    g_steer_gain,    2.0);
+  pnh.param<double>("steer_gain",    g_steer_gain,    1.5); // 초기 steer_gain
   pnh.param<double>("steer_smoothing_alpha", g_alpha_ema, 0.2);
   pnh.param<double>("max_steer_delta_per_cycle", g_max_delta, 0.08);
 
@@ -165,9 +235,14 @@ int main(int argc, char** argv)
   // 타임아웃
   pnh.param<double>("dx_timeout_sec", g_dx_timeout_sec, 1.0);
 
+  // 곡률 범위 파라미터
+  pnh.param<double>("min_curvature", g_min_curv, 0.0);
+  pnh.param<double>("max_curvature", g_max_curv, 0.01);
+
   // --- Pub/Sub ---
-  ros::Subscriber center_sub =
-      nh.subscribe(g_topic_center_point, 20, centerCB);
+  ros::Subscriber center_sub     = nh.subscribe(g_topic_center_point,       20, centerCB);
+  ros::Subscriber crosswalk_sub  = nh.subscribe(g_is_crosswalk_topic,       10, crosswalkCB);
+  ros::Subscriber curvature_sub  = nh.subscribe(g_topic_curvature_center,   10, curvatureCenterCB);
 
   g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
   g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
@@ -197,6 +272,30 @@ int main(int argc, char** argv)
         "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
     }
 
+    // ---------------- is_crosswalk 처리 (7초 정지) ----------------
+    // crosswalk 토픽이 true로 바뀌는 순간 타이머 시작
+    if (g_is_crosswalk && !g_crosswalk_timer_running) {
+      g_crosswalk_timer_running = true;
+      g_crosswalk_start_time    = now;
+      ROS_INFO("[lane_ctrl] is_crosswalk TRUE: start 7s hold");
+    }
+
+    if (g_crosswalk_timer_running) {
+      double dt = (now - g_crosswalk_start_time).toSec();
+      if (dt < 7.0) {
+        // 7초 동안 정지
+        steer_cmd = 0.0;   // 직진 (필요하면 다른 값으로 조정 가능)
+        speed_cmd = 0.0;
+
+        ROS_INFO_THROTTLE(1.0,
+          "[lane_ctrl] is_crosswalk: HOLD (t=%.2f/7.0)", dt);
+      } else {
+        g_crosswalk_timer_running = false;
+        ROS_INFO("[lane_ctrl] is_crosswalk: 7s hold finished");
+      }
+    }
+    // -------------------------------------------------------------
+
     // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
     double steer_norm = clamp(steer_cmd, -1.0, 1.0);
 
@@ -223,8 +322,8 @@ int main(int argc, char** argv)
     g_pub_servo.publish(servo_msg);
 
     ROS_INFO_THROTTLE(0.5,
-      "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f",
-      (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd);
+      "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
+      (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
 
     rate.sleep();
   }
