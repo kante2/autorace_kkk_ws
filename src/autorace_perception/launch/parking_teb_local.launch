@@ -1,0 +1,37 @@
+<launch>
+  <!-- cmd_vel / odom / tf 는 이미 있다고 가정 (또는 odom 없이 base_link만 써도 됨) -->
+
+  <node pkg="move_base" type="move_base" name="move_base" output="screen">
+    <!-- 공통 costmap 파라미터 -->
+    <rosparam file="$(find autorace_perception)/config/costmap_common_params.yaml" command="load" />
+
+    <!-- global costmap (실제로는 작은 롤링 창, static map 없음) -->
+    <rosparam file="$(find autorace_perception)/config/global_costmap_params.yaml" command="load" />
+
+    <!-- local costmap -->
+    <rosparam file="$(find autorace_perception)/config/local_costmap_params.yaml" command="load" />
+
+    <!-- TEB 파라미터 -->
+    <rosparam file="$(find autorace_perception)/config/teb_local_planner_params.yaml" command="load" />
+
+    <!-- move_base 자체 파라미터 -->
+    <param name="base_global_planner" value="navfn/NavfnROS" />
+    <param name="base_local_planner"  value="teb_local_planner/TebLocalPlannerROS" />
+
+    <param name="controller_frequency" value="10.0" />
+    <param name="planner_frequency"    value="1.0" />
+  </node>
+  
+  <!-- 2) Parking Mission -->
+  <node pkg="autorace_perception" type="parking_mission.py" name="parking_mission" output="screen"/>
+
+  <!-- 3) cmd_vel → 차량 명령 변환 브리지 -->
+
+  <node pkg="autorace_perception" type="cmdvel_to_webot.py" name="cmdvel_bridge" output="screen">
+        <param name="use_steer_direct" value="true"/>
+        <param name="wheelbase" value="0.26"/>
+        <param name="steer_center" value="0.5"/>
+        <param name="steer_gain" value="1.0"/>
+        <param name="steer_limit" value="1.0"/>
+  </node>
+</launch>

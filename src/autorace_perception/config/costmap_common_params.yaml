@@ -1,0 +1,17 @@
+# config/costmap_common_params.yaml
+
+obstacle_range: 5.0
+raytrace_range: 6.0
+
+footprint: [[0.30, 0.20], [0.30, -0.20], [-0.30, -0.20], [-0.30, 0.20]]
+inflation_radius: 0.3
+
+observation_sources: laser
+
+laser:
+  data_type: LaserScan
+  topic: /scan
+  marking: true
+  clearing: true
+
+transform_tolerance: 0.2

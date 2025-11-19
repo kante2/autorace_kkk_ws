@@ -1,0 +1,16 @@
+# config/global_costmap_params.yaml
+
+global_costmap:
+  global_frame: base_link        # map/odom 말고 base_link 사용
+  robot_base_frame: base_link
+  update_frequency: 10.0
+  publish_frequency: 5.0
+
+  rolling_window: true
+  width: 6.0
+  height: 6.0
+  resolution: 0.05
+
+  plugins:
+    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}

@@ -1,0 +1,28 @@
+# config/teb_local_planner_params.yaml
+
+TebLocalPlannerROS:
+  odom_topic: odom        # odom 없으면 tf에서 base_link 기준으로라도 하나 제공하는 게 좋음
+  map_frame: base_link    # 위에서 global_frame을 base_link로 썼으니 여기서도 base_link
+
+  max_vel_x: 0.8
+  max_vel_x_backwards: 0.4
+  max_vel_theta: 1.0
+  acc_lim_x: 1.0
+  acc_lim_theta: 1.0
+
+  footprint_model:
+    type: "polygon"
+    vertices: [[0.30, 0.20], [0.30, -0.20], [-0.30, -0.20], [-0.30, 0.20]]
+
+  # 장애물은 costmap에서 받아옴
+  min_obstacle_dist: 0.15
+
+  # 경로 해상도
+  teb_autosize: true
+  dt_ref: 0.3
+  dt_hysteresis: 0.1
+  global_plan_overwrite_orientation: true
+
+  # 목표 근처 허용 반경
+  xy_goal_tolerance: 0.05
+  yaw_goal_tolerance: 0.05

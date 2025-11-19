@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-vision-msgs libgeographic-dev geographiclib-tools \
     # 주행/제어 메시지
     ros-noetic-sparse-bundle-adjustment ros-noetic-map-server \ 
-    ros-noetic-ackermann-msgs \
+    ros-noetic-ackermann-msgs ros-noetic-navigation ros-noetic-teb-local-planner \
     # 유틸 & 디버깅
     ros-noetic-rviz ros-noetic-rqt ros-noetic-rqt-graph ros-noetic-rqt-plot \
     # Video I/O (카메라/동영상 스트림 편의)

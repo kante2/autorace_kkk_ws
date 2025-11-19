@@ -7,6 +7,7 @@ import numpy as np
 from lidar_preprocessing import preprocess_lidar
 from obstacle_detect import detect
 from clustering_visualization import ClusterVisualizer
+
 class Rotary_mission:
     def __init__(self):
         rospy.init_node("rotary_mission")
