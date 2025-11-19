@@ -42,9 +42,9 @@ laser_geometry::LaserProjection projector_;
 // ===== 전역 파라미터 =====
 double eps_            = 0.2;    // 클러스터 간 거리 [m]
 int    min_samples_    = 10;      // DBSCAN 최소 점 수
-double basic_speed_    = 1500.0; // 게이트 올라가 있을 때 기본 속도
+double basic_speed_    = 1000.0; // 게이트 올라가 있을 때 기본 속도
 double stop_speed_     = 0.0;    // 정지 속도
-double gate_stop_dist_ = 0.2;    // 로봇-게이트 중심 거리 임계값 [m]
+double gate_stop_dist_ = 2.0;    // 로봇-게이트 중심 거리 임계값 [m]
 
 // 게이트 상태 히스테리시스
 int gate_down_count_   = 0;
@@ -325,7 +325,7 @@ void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
     // --- 포인트 필터링: 13cm ~ 40cm, 전방 기준 ±120도 ---
     for (const auto& r : scan->ranges)
     {
-        if (!std::isfinite(r) || r < 0.13 || r > 0.4)
+        if (!std::isfinite(r) || r < 0.10 || r > 0.5)
         {
             angle += scan->angle_increment;
             continue;
