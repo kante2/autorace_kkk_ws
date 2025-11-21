@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include <std_msgs/Bool.h>
+#include <std_msgs/Float64.h>  
 
 // -------------------- 전역 상태 --------------------
 ros::Publisher g_pub_center_point;
@@ -61,6 +62,7 @@ double    g_white_ratio_threshold = 0.25;  // 흰색 비율 threshold
 bool      g_stop_active           = false; // 현재 정지 중인지 여부
 ros::Time g_stop_start_time;              // 정지 시작 시간
 double    g_stop_duration         = 7.0;   // 정지 유지 시간(초)
+ros::Publisher g_pub_white_ratio;
 
 // -------------------- 구조체 정의 --------------------
 struct LaneColorResult {
@@ -112,6 +114,7 @@ void compute_StopState(double white_ratio, const ros::Time& now)
     g_stop_start_time = ros::Time(0);
     ROS_INFO("[stopline_node] STOP RELEASED (duration done)");
   }
+  
 }
 
 // -------------------- 헬퍼 함수들 --------------------
@@ -506,6 +509,9 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
 
     // 3-1) 횡단보도(정지선) 인식: 흰색 비율 계산
     double white_ratio = computeWhiteRatio(bev_binary);
+    std_msgs::Float64 ratio_msg;
+    ratio_msg.data = white_ratio;
+    g_pub_white_ratio.publish(ratio_msg);
 
     // 3-2) 정지 상태 업데이트 (7초 정지 등)
     ros::Time now = ros::Time::now();
@@ -651,6 +657,7 @@ int main(int argc, char** argv)
   g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
   g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1); // 0=none,1=red,2=blue
   g_pub_is_cross_walk  = nh.advertise<std_msgs::Bool>("/perception/go_straight_cmd", 1);
+  g_pub_white_ratio    = nh.advertise<std_msgs::Float64>("/perception/white_ratio", 1);
   // ↑ 토픽 이름은 그대로 /perception/go_straight_cmd 쓰고,
   //   퍼블리셔/플래그 이름만 is_cross_walk 로 사용 중
 
