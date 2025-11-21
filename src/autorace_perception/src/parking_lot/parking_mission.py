@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import rospy 
 from math import *
 from sensor_msgs.msg import LaserScan
@@ -18,7 +21,7 @@ class Parking_mission:
         
         # TEB로 goal 보내는 publisher
         self.goal_pub = rospy.Publisher(
-            "/move_base_simple/goal",  # TEB가 듣는 토픽에 맞게 바꿔도 됨
+            "/move_base_park/goal",  # TEB가 듣는 토픽에 맞게 바꿔도 됨
             PoseStamped,
             queue_size=1
         )
@@ -50,15 +53,15 @@ class Parking_mission:
             print("No parking")
         
         # 이미 goal 보냈으면 또 안 보냄 (원하면 이 로직은 빼도 됨)
-        if self.goal_published:
-            return
+        # if self.goal_published:
+        #    return
 
         # lines로부터 goal pose 계산
         success, gx, gy, gyaw = compute_goal_from_lines(
             lines,
-            min_width=1.8,   # 필요하면 파라미터화
-            min_depth=3.5,
-            wall_offset=0.5
+            min_width=0.3,   # 필요하면 파라미터화
+            min_depth=0.2,
+            wall_offset=0.1
         )
 
         if not success:

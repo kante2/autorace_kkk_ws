@@ -4,10 +4,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf.transformations import quaternion_from_euler
 
-def compute_goal_from_lines(lines,
-                            min_width=1.8,
-                            min_depth=3.5,
-                            wall_offset=0.5):
+def compute_goal_from_lines(lines, min_width, min_depth, wall_offset):
     """
     parking_detect에서 받은 lines로부터
     1) 왼/오른쪽 벽, 뒷벽 라인 분류
@@ -19,6 +16,7 @@ def compute_goal_from_lines(lines,
     """
 
     if len(lines) < 3:
+        print("line is under 3... ")
         return False, 0.0, 0.0, 0.0
 
     # inliers 많은 순으로 정렬하고 상위 3개 사용
@@ -101,6 +99,26 @@ def compute_goal_from_lines(lines,
 
     return True, goal_x, goal_y, goal_yaw
 
+_yaw_offset_cached = None
+
+def _get_goal_yaw_offset():
+    """
+    Lazily fetch yaw offset between lidar frame과 base_link (deg, default 0).
+    양수는 반시계 방향 회전.
+    """
+    global _yaw_offset_cached
+    if _yaw_offset_cached is None:
+        param_name = "~goal_yaw_offset_deg"
+        if rospy.has_param(param_name):
+            yaw_offset_deg = rospy.get_param(param_name)
+        else:
+            yaw_offset_deg = 180.0  # 기본적으로 라이다가 후방 0deg이므로 180deg 보정
+        _yaw_offset_cached = math.radians(yaw_offset_deg)
+    return _yaw_offset_cached
+
+def _normalize_angle(angle):
+    return math.atan2(math.sin(angle), math.cos(angle))
+
 def publish_parking_goal(goal_pub,
                          goal_x,
                          goal_y,
@@ -118,7 +136,9 @@ def publish_parking_goal(goal_pub,
     msg.pose.position.y = goal_y
     msg.pose.position.z = 0.0
 
-    q = quaternion_from_euler(0.0, 0.0, goal_yaw)
+    yaw_offset = _get_goal_yaw_offset()
+    yaw_with_offset = _normalize_angle(goal_yaw + yaw_offset)
+    q = quaternion_from_euler(0.0, 0.0, yaw_with_offset)
     msg.pose.orientation = Quaternion(*q)
 
     goal_pub.publish(msg)
