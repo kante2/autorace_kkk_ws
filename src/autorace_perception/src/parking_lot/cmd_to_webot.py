@@ -21,8 +21,9 @@ class CmdVelToWebot(object):
         self.servo_min = rospy.get_param("~servo_min", 0.0)
         self.servo_max = rospy.get_param("~servo_max", 1.0)
 
-        # 전/후진 방향 전환 시 0을 한 번 거치기 위해 이전 모터 부호 기억
-        self.prev_motor_sign = 0
+        # 모터 명령 rate-limit을 위해 이전 명령 저장 (부호 전환 시 급격한 변화 방지)
+        self.prev_motor_cmd = 0.0
+        self.motor_step_limit = rospy.get_param("~motor_step_limit", 200.0)  # 한 주기 최대 변화량
 
         # input: teb /cmd_vel
         self.sub = rospy.Subscriber("/cmd_vel", Twist,
@@ -66,16 +67,13 @@ class CmdVelToWebot(object):
             else:
                 desired_cmd = min(motor_raw, -1000.0)
 
-        # 부호 판정
-        desired_sign = 0 if abs(desired_cmd) < 1e-6 else (1 if desired_cmd > 0 else -1)
-
-        # 부호가 바뀌면: 0을 먼저 한 번 퍼블리시한 뒤 새 명령을 보냄
-        if self.prev_motor_sign != 0 and desired_sign != 0 and desired_sign != self.prev_motor_sign:
-            stop_msg = Float64()
-            stop_msg.data = 0.0
-            self.motor_pub.publish(stop_msg)
-
-        motor_cmd.data = desired_cmd
+        # prev → desired 사이를 부드럽게 이동 (rate limit)
+        delta = desired_cmd - self.prev_motor_cmd
+        if delta > self.motor_step_limit:
+            delta = self.motor_step_limit
+        elif delta < -self.motor_step_limit:
+            delta = -self.motor_step_limit
+        motor_cmd.data = self.prev_motor_cmd + delta
 
         # 셋째 자리 이하는 버림 (100 단위로 내림)
         motor_cmd.data = math.floor(motor_cmd.data / 100.0) * 100.0
@@ -88,7 +86,7 @@ class CmdVelToWebot(object):
             motor_cmd.data = -MAX_MOTOR
 
         self.motor_pub.publish(motor_cmd)
-        self.prev_motor_sign = desired_sign
+        self.prev_motor_cmd = motor_cmd.data
 
         # ================================
         # STEERING CONVERSION

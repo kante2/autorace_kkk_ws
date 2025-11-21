@@ -3,10 +3,18 @@
   <!-- LiDAR 기반 odom (hector + tf→/odom 노드) -->
   <include file="$(find autorace_perception)/launch/lidar_odom.launch" />
 
-  <!-- move_base + TEB local planner -->
-  <include file="$(find autorace_perception)/launch/local_teb_planner.launch" />
+  <!-- move_base + TEB local planner (odom 준비 후 약간 지연) -->
+  <node pkg="roslaunch" type="roslaunch" name="local_teb_planner"
+        launch-prefix="bash -c 'sleep 0.5; exec $0 $@'" output="screen"
+        args="$(find autorace_perception)/launch/local_teb_planner.launch" />
 
-  <!-- 주차 감지 + goal publish + cmd_vel → 모터/서보 브리지 -->
-  <include file="$(find autorace_perception)/launch/parking_mission.launch" />
+  <!-- 주차 감지 + goal publish + cmd_vel → 모터/서보 브리지 (planner 후 추가 지연) -->
+  <node pkg="roslaunch" type="roslaunch" name="parking_mission"
+        launch-prefix="bash -c 'sleep 0.5; exec $0 $@'" output="screen"
+        args="$(find autorace_perception)/launch/parking_mission.launch" />
+
+  <!-- RViz with parking config -->
+  <node pkg="rviz" type="rviz" name="rviz_parking" output="screen"
+        args="-d $(find robot_bringup)/config/parking.rviz" />
 
 </launch>

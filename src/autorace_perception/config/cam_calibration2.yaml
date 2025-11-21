@@ -1,19 +1,26 @@
 # 잘 펴지는데 가쪽 왜곡 심함
 
-image_width: 640
-image_height: 480
+# 이미지 크기 및 카메라 이름
+image_width: 640          # 픽셀 너비
+image_height: 480         # 픽셀 높이
 camera_name: usb_cam
+
+# 내부 파라미터 (K)
 camera_matrix:
   rows: 3
   cols: 3
   data: [292.45206,   0.     , 359.9676 ,
-           0.     , 289.01748, 232.69287,
-           0.     ,   0.     ,   1.     ]
+          0.     , 289.01748, 232.69287,
+          0.     ,   0.     ,   1.     ]
+
+# 왜곡 모델/계수
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
   cols: 5
   data: [-0.290125, 0.048762, 0.009754, -0.003216, 0.000000]
+
+# 직교화/투영 행렬
 rectification_matrix:
   rows: 3
   cols: 3
@@ -24,5 +31,5 @@ projection_matrix:
   rows: 3
   cols: 4
   data: [222.22929,   0.     , 372.88928,   0.     ,
-           0.     , 217.7047 , 229.23541,   0.     ,
-           0.     ,   0.     ,   1.     ,   0.     ]
+          0.     , 217.7047 , 229.23541,   0.     ,
+          0.     ,   0.     ,   1.     ,   0.     ]

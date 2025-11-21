@@ -1,16 +1,16 @@
 # config/local_costmap_params.yaml
 
 local_costmap:
-  global_frame: odom
+  global_frame: odom          # 로컬 코스트맵 기준 좌표계
   robot_base_frame: base_link
-  update_frequency: 10.0
-  publish_frequency: 10.0
-
-  rolling_window: true
-  width: 4.0
-  height: 4.0
-  resolution: 0.05
+  update_frequency: 10.0      # 갱신 주기(Hz)
+  publish_frequency: 10.0     # 퍼블리시 주기(Hz)
+  
+  rolling_window: true        # 로봇을 따라 이동하는 창
+  width: 3.0                  # 창 가로(m)
+  height: 3.0                 # 창 세로(m)
+  resolution: 0.05            # 해상도(m/cell)
 
   plugins:
-    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
-    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}
+    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}     # 장애물 레이어
+    - {name: inflation_layer, type: "costmap_2d::InflationLayer"}   # 인플레이션 레이어

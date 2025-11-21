@@ -1,17 +1,24 @@
 # config/costmap_common_params.yaml
 
-obstacle_range: 5.0
-raytrace_range: 6.0
+# 장애물/레이추적 최대거리 (센서 정보 반영 범위)
+obstacle_range: 3.0
+raytrace_range: 3.0
 
-footprint: [[0.30, 0.20], [0.30, -0.20], [-0.30, -0.20], [-0.30, 0.20]]
+# costmap에서 사용할 로봇 외형(폴리곤 좌표, m)
+footprint: [[0.15, 0.095], [0.15, -0.095], [-0.15, -0.095], [-0.15, 0.095]]
+
+# 장애물 비용 퍼뜨리는 반경 (인플레이션)
 inflation_radius: 0.3
 
+# 사용 센서 목록
 observation_sources: laser
 
+# LaserScan 입력 설정
 laser:
   data_type: LaserScan
   topic: /scan
-  marking: true
-  clearing: true
+  marking: true   # 장애물 추가
+  clearing: true  # 장애물 제거
 
-transform_tolerance: 0.2
+# TF 지연 허용 시간
+transform_tolerance: 0.7

@@ -36,12 +36,15 @@ def parking_detect(angle_ranges, dist_ranges,
     return is_u, lines
 
 def polar_to_cartesian(angles, dists):
-    # (dist, radian) -> (x,y)
-    angles = np.deg2rad(angles)
+    """
+    (dist, deg) -> (x,y)
+    라이다 각도 기준: 후방=0/360°, 전방=180°, 반시계 증가.
+    base_link 전방(+x)을 0°로 맞추기 위해 각도를 -pi 회전하여 좌표 변환.
+    """
+    angles = np.deg2rad(angles) - np.pi  # 180deg -> 0deg (전방 정렬)
     x = dists * np.cos(angles)
     y = dists * np.sin(angles)
-    points = np.vstack((x,y)).T
-    return points
+    return np.vstack((x, y)).T
 
 def line_from_points(p1, p2):
     """
