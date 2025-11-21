@@ -10,7 +10,7 @@
 
 // ======================================================================
 //  lane_logic.hpp 에서 extern 으로 선언된 것들 "실제 정의"
-//  (네가 mission_lane에서 쓰던 패턴 그대로 복붙해도 됨)
+//  (⚠ main_node + 다른 미션 파일에서 중복 정의 안 나게 나중에 정리 필요)
 // ======================================================================
 
 // 토픽 이름들
@@ -70,6 +70,14 @@ ros::Time g_crosswalk_start_time;             // 7초 타이머 시작 시각
 double g_min_curv = 3e-4;    // 최소 곡률 (예: 직선에 가까움)
 double g_max_curv = 1.5e-3;   // 최대 곡률 (예: 많이 휘어짐)
 
+// PID
+double g_kp_lat   = 1.5;
+double g_ki_lat   = 0.0;
+double g_kd_lat   = 0.0;
+double g_int_sat  = 0.5;
+
+// lane 쪽 구독자 (필요하면 사용)
+ros::Subscriber g_sub_crosswalk;   // crosswalk 플래그만 쓰면 이것만 있어도 됨
 
 // ======================================================================
 //  obstacle_dbscan_logic.hpp 에서 extern 으로 선언된 것들 "실제 정의"
@@ -108,17 +116,19 @@ double    g_obs_latest_speed_cmd = 0.0;   // m/s
 ros::Publisher g_pub_obs_marker;
 ros::Publisher g_pub_obs_cloud;
 
+// obstacle scan 구독자
+ros::Subscriber g_sub_obs_scan;
+
+
 // ======================================================================
-//  main
+//  mission_labacorn: init / step
+//  (main_node.cpp 에서 호출)
 // ======================================================================
 
-int main(int argc, char** argv)
+// 초기화: 토픽, 파라미터, pub/sub 세팅
+void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-  ros::init(argc, argv, "mission_labacorn");
-  ros::NodeHandle nh;
-  ros::NodeHandle pnh("~");
-
-  ROS_INFO("[mission_labacorn] obstacle DBSCAN + lane motor logic");
+  ROS_INFO("[mission_labacorn] init start (obstacle DBSCAN + lane motor logic)");
 
   // 1) lane controller 파라미터 로드 (servo/motor 스케일, crosswalk 등)
   loadParams(pnh);
@@ -140,14 +150,12 @@ int main(int argc, char** argv)
   // --- Pub/Sub 설정 ---
 
   // Lidar scan → 장애물 DBSCAN 콜백
-  ros::Subscriber scan_sub =
+  g_sub_obs_scan =
       nh.subscribe(g_obs_scan_topic, 1, CB_obstacle_scan);
 
   // crosswalk 플래그 (lane_logic.cpp에 있는 CB_crosswalk 재사용)
-  ros::Subscriber crosswalk_sub =
+  g_sub_crosswalk =
       nh.subscribe(g_is_crosswalk_topic, 10, CB_crosswalk);
-
-  // (이번 미션에서는 lane center / curvature는 사용 X)
 
   // 모터/서보 퍼블리셔 (lane_logic에서 사용)
   g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
@@ -159,62 +167,58 @@ int main(int argc, char** argv)
   g_pub_obs_cloud =
       nh.advertise<sensor_msgs::PointCloud2>(g_obs_cloud_topic, 1);
 
-  // --- 메인 루프 ---
-  ros::Rate rate(15);
-  while (ros::ok())
+  ROS_INFO("[mission_labacorn] init done");
+}
+
+// 한 스텝 실행: main_node의 while 루프 안에서 주기적으로 호출
+void mission_labacorn_step()
+{
+  ros::Time now = ros::Time::now();
+
+  // 1) Lidar scan timeout 체크
+  bool have_scan = false;
+  if (g_obs_have_scan_time)
   {
-    ros::spinOnce();
-    ros::Time now = ros::Time::now();
+    double dt = (now - g_obs_last_scan_time).toSec();
+    have_scan = (dt <= g_obs_scan_timeout_sec);
+  }
 
-    // 1) Lidar scan timeout 체크
-    bool have_scan = false;
-    if (g_obs_have_scan_time)
+  // 2) 기본 조향/속도는 장애물 DBSCAN 결과를 사용
+  double steer_cmd = 0.0; // -1 ~ +1
+  double speed_cmd = 0.0; // m/s
+
+  if (have_scan && g_obs_have_target)
+  {
+    steer_cmd = g_obs_latest_steer_cmd;
+    speed_cmd = g_obs_latest_speed_cmd;
+  }
+  else
+  {
+    // 스캔이 없거나 타겟이 없으면 일단 정지
+    steer_cmd = 0.0;
+    speed_cmd = 0.0;
+
+    if (!have_scan)
     {
-      double dt = (now - g_obs_last_scan_time).toSec();
-      have_scan = (dt <= g_obs_scan_timeout_sec);
-    }
-
-    // 2) 기본 조향/속도는 장애물 DBSCAN 결과를 사용
-    double steer_cmd = 0.0; // -1 ~ +1
-    double speed_cmd = 0.0; // m/s
-
-    if (have_scan && g_obs_have_target)
-    {
-      steer_cmd = g_obs_latest_steer_cmd;
-      speed_cmd = g_obs_latest_speed_cmd;
+      ROS_INFO_THROTTLE(1.0,
+        "[mission_labacorn] waiting LaserScan... (timeout)");
     }
     else
     {
-      // 스캔이 없거나 타겟이 없으면 일단 정지
-      steer_cmd = 0.0;
-      speed_cmd = 0.0;
-
-      if (!have_scan)
-      {
-        ROS_INFO_THROTTLE(1.0,
-          "[mission_labacorn] waiting LaserScan... (timeout)");
-      }
-      else
-      {
-        ROS_INFO_THROTTLE(1.0,
-          "[mission_labacorn] have_scan but no obstacle target -> stop");
-      }
+      ROS_INFO_THROTTLE(1.0,
+        "[mission_labacorn] have_scan but no obstacle target -> stop");
     }
-
-    // 3) crosswalk 7초 정지 로직 (lane_logic 쪽 함수 재사용)
-    apply_crosswalk_hold(steer_cmd, speed_cmd, now);
-
-    // 4) 조향/속도 → 서보/모터 명령으로 변환 & Publish
-    publish_motor_commands(steer_cmd, speed_cmd);
-
-    ROS_INFO_THROTTLE(0.5,
-      "[mission_labacorn][loop] have_scan=%d have_target=%d "
-      "steer=%.3f v=%.2f",
-      (int)have_scan, (int)g_obs_have_target,
-      steer_cmd, speed_cmd);
-
-    rate.sleep();
   }
 
-  return 0;
+  // 3) crosswalk 7초 정지 로직 (lane_logic 쪽 함수 재사용)
+  apply_crosswalk_hold(steer_cmd, speed_cmd, now);
+
+  // 4) 조향/속도 → 서보/모터 명령으로 변환 & Publish
+  publish_motor_commands(steer_cmd, speed_cmd);
+
+  ROS_INFO_THROTTLE(0.5,
+    "[mission_labacorn][step] have_scan=%d have_target=%d "
+    "steer=%.3f v=%.2f",
+    (int)have_scan, (int)g_obs_have_target,
+    steer_cmd, speed_cmd);
 }

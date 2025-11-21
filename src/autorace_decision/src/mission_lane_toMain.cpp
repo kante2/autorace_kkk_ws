@@ -49,24 +49,25 @@ ros::Time g_crosswalk_start_time;
 double g_min_curv = 3e-4;
 double g_max_curv = 1.5e-3;
 
-
-// pid
-double g_kp_lat   = 1.5;   // 원래 steer_gain 과 같은 값으로 시작
+// PID
+double g_kp_lat   = 1.5;
 double g_ki_lat   = 0.0;
 double g_kd_lat   = 0.0;
-double g_int_sat  = 0.5;   // 적분 항 최대 절대값 (필요에 따라 튜닝)
+double g_int_sat  = 0.5;
+
+// 구독자도 전역으로 유지해야 콜백이 살아 있음
+ros::Subscriber g_sub_center;
+ros::Subscriber g_sub_crosswalk;
+ros::Subscriber g_sub_curvature;
 
 
-// -------------------- main --------------------
-int main(int argc, char** argv)
+// -------------------- 초기화 함수 --------------------
+// main_node.cpp 에서 한 번만 호출해줌
+void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-  ros::init(argc, argv, "mission_lane");
-  ros::NodeHandle nh;
-  ros::NodeHandle pnh("~");
+  ROS_INFO("[mission_lane] init start");
 
-  ROS_INFO("[mission_lane] (center_point_px -> motor/servo Float64)");
-
-  // 파라미터 로드 (logic cpp에 구현)
+  // controller_lane_logic.cpp 안에 있는 함수
   loadParams(pnh);
 
   ROS_INFO("[lane_ctrl] subscribe center='%s'",
@@ -80,50 +81,46 @@ int main(int argc, char** argv)
            ros::names::resolve(g_servo_topic).c_str());
 
   // --- Pub/Sub ---
-  ros::Subscriber center_sub     = nh.subscribe(g_topic_center_point,       20, CB_center);
-  ros::Subscriber crosswalk_sub  = nh.subscribe(g_is_crosswalk_topic,       10, CB_crosswalk);
-  ros::Subscriber curvature_sub  = nh.subscribe(g_topic_curvature_center,   10, CB_center_curvature);
+  g_sub_center    = nh.subscribe(g_topic_center_point,     20, CB_center);
+  g_sub_crosswalk = nh.subscribe(g_is_crosswalk_topic,     10, CB_crosswalk);
+  g_sub_curvature = nh.subscribe(g_topic_curvature_center, 10, CB_center_curvature);
 
   g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
   g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
 
-  // --- 메인 루프 ---
-  ros::Rate rate(15);
-  while (ros::ok()) {
-    ros::spinOnce();
+  ROS_INFO("[mission_lane] init done");
+}
 
-    ros::Time now = ros::Time::now();
-    bool have_dx = false;
-    if (g_have_cb_time) {
-      double dt = (now - g_last_cb_time).toSec();
-      have_dx = (dt <= g_dx_timeout_sec);
-    }
+// -------------------- 한 스텝 실행 함수 --------------------
+// main_node.cpp 의 while 루프 안에서 주기적으로 호출
+void mission_lane_step()
+{
+  ros::Time now = ros::Time::now();
+  bool have_dx = false;
 
-    double steer_cmd = 0.0;
-    double speed_cmd = 0.0;
-
-    if (have_dx) {
-      steer_cmd = g_latest_steer_cmd;
-      speed_cmd = g_latest_speed_cmd;
-    } else {
-      steer_cmd = 0.0;
-      speed_cmd = 0.0;
-      ROS_INFO_THROTTLE(1.0,
-        "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
-    }
-
-    // 1. crosswalk 7초 정지 로직 (그대로 유지)
-    apply_crosswalk_hold(steer_cmd, speed_cmd, now);
-
-    // 2. 조향/속도 -> 서보/모터 명령 변환
-    publish_motor_commands(double steer_cmd, double speed_cmd);
-
-    ROS_INFO_THROTTLE(0.5,
-      "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
-      (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
-
-    rate.sleep();
+  if (g_have_cb_time) {
+    double dt = (now - g_last_cb_time).toSec();
+    have_dx = (dt <= g_dx_timeout_sec);
   }
 
-  return 0;
+  double steer_cmd = 0.0;
+  double speed_cmd = 0.0;
+
+  if (have_dx) {
+    steer_cmd = g_latest_steer_cmd;
+    speed_cmd = g_latest_speed_cmd;
+  } else {
+    steer_cmd = 0.0;
+    speed_cmd = 0.0;
+    ROS_INFO_THROTTLE(1.0,
+      "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
+  }
+
+  // 1. crosswalk 7초 정지 로직
+  apply_crosswalk_hold(steer_cmd, speed_cmd, now);
+
+  // 2. 조향/속도 -> 서보/모터 명령 변환
+  publish_motor_commands(steer_cmd, speed_cmd);
+  // servo/motor 값은 publish_motor_commands() 안에서 이미 ROS_INFO_THROTTLE로 찍고 있으니
+  // 여기서 별도 servo_hw, motor_cmd 로그는 안 찍어도 됨
 }

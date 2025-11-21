@@ -9,6 +9,9 @@ topic_curvature_center: "/perception/curvature_center"
 # ===== BEV 중심 x 픽셀 =====
 bev_center_x_px: 320.0
 
+# ------------------
+
+
 # ===== 서보 스케일 =====
 servo_center: 0.5
 servo_min: 0.0

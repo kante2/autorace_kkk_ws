@@ -60,11 +60,53 @@ void loadParams(ros::NodeHandle& pnh)
   // 곡률 범위 파라미터
   pnh.param<double>("min_curvature", g_min_curv, 0.0003);
   pnh.param<double>("max_curvature", g_max_curv, 0.0015);
+
+  // PID
+  // ----- PID 게인 파라미터 -----
+  // Kp는 기존 steer_gain을 재활용 (또는 따로 kp_lat로 써도 됨)
+  pnh.param<double>("ki_lat",   g_ki_lat,   0.0);
+  pnh.param<double>("kd_lat",   g_kd_lat,   0.0);
+  pnh.param<double>("int_sat",  g_int_sat,  0.5);  // 적분항 최대 절대값
+
 }
 
 // -------------------- dx 처리 로직 --------------------
+// void compute_Dx(double dx)
+// {
+//   double err_norm = 0.0;
+
+//   if (std::fabs(dx) <= g_dx_tolerance) {
+//     err_norm = 0.0;
+//   } else {
+//     err_norm = clamp(dx / g_max_abs_dx_px, -1.0, 1.0);
+//   }
+
+//   // -1 ~ +1 사이 조향 명령 (tanh 비선형)
+//   double steer_raw = std::tanh(g_steer_gain * err_norm);
+
+//   // EMA 스무딩
+//   double steer_smooth = g_alpha_ema * steer_raw + (1.0 - g_alpha_ema) * g_prev_steer;
+
+//   // 한 step당 변화 제한
+//   double delta = clamp(steer_smooth - g_prev_steer, -g_max_delta, g_max_delta);
+//   double steer_cmd = g_prev_steer + delta;
+//   g_prev_steer = steer_cmd;
+
+//   // 속도: 오차 클수록 줄이기
+//   double speed_cmd = clamp(g_base_speed_mps - g_speed_drop_gain * std::fabs(err_norm),
+//                            g_min_speed_mps, g_base_speed_mps);
+
+//   g_latest_steer_cmd = steer_cmd;   // -1 ~ +1
+//   g_latest_speed_cmd = speed_cmd;   // m/s 개념
+
+//   ROS_INFO_THROTTLE(0.5,
+//     "[lane_ctrl][CB] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f (steer_gain=%.3f)",
+//     dx, err_norm, steer_cmd, speed_cmd, g_steer_gain);
+// }
+
 void compute_Dx(double dx)
 {
+  // ===== 1) 에러 정규화 =====
   double err_norm = 0.0;
 
   if (std::fabs(dx) <= g_dx_tolerance) {
@@ -73,28 +115,73 @@ void compute_Dx(double dx)
     err_norm = clamp(dx / g_max_abs_dx_px, -1.0, 1.0);
   }
 
-  // -1 ~ +1 사이 조향 명령 (tanh 비선형)
-  double steer_raw = std::tanh(g_steer_gain * err_norm);
+  // ===== 2) 시간 계산 (dt) =====
+  static bool first = true;
+  static ros::Time prev_t;
+  ros::Time now = ros::Time::now();
 
-  // EMA 스무딩
+  double dt = 0.0;
+  if (first) {
+    first = false;
+    prev_t = now;
+    dt = 0.0;
+  } else {
+    dt = (now - prev_t).toSec();
+    if (dt <= 0.0) dt = 1e-3;  // 방어 코드
+  }
+
+  // ===== 3) PID 내부 상태 (적분/이전 에러) =====
+  static double int_err  = 0.0;   // ∫err dt
+  static double prev_err = 0.0;   // 이전 err_norm
+
+  // ----- P -----
+  // g_steer_gain 을 Kp로 사용 (필요하면 g_kp_lat 따로 써도 됨)
+  double P = g_steer_gain * err_norm;
+
+  // ----- I -----
+  if (dt > 0.0) {
+    int_err += err_norm * dt;
+    // 적분 폭주 방지 (Anti-windup)
+    int_err = clamp(int_err, -g_int_sat, g_int_sat);
+  }
+  double I = g_ki_lat * int_err;
+
+  // ----- D -----
+  double D = 0.0;
+  if (dt > 0.0) {
+    double derr = (err_norm - prev_err) / dt;
+    D = g_kd_lat * derr;
+  }
+  prev_err = err_norm;
+  prev_t   = now;
+
+  // ===== 4) PID 결과 → 조향 원시 명령 =====
+  double steer_raw = P + I + D;
+
+  // -1 ~ +1로 제한
+  steer_raw = clamp(steer_raw, -1.0, 1.0);
+
+  // ===== 5) 기존 EMA + delta 제한 재사용 =====
   double steer_smooth = g_alpha_ema * steer_raw + (1.0 - g_alpha_ema) * g_prev_steer;
 
-  // 한 step당 변화 제한
   double delta = clamp(steer_smooth - g_prev_steer, -g_max_delta, g_max_delta);
   double steer_cmd = g_prev_steer + delta;
   g_prev_steer = steer_cmd;
 
-  // 속도: 오차 클수록 줄이기
-  double speed_cmd = clamp(g_base_speed_mps - g_speed_drop_gain * std::fabs(err_norm),
-                           g_min_speed_mps, g_base_speed_mps);
+  // ===== 6) 속도 계획은 기존 로직 유지 =====
+  double speed_cmd = clamp(
+      g_base_speed_mps - g_speed_drop_gain * std::fabs(err_norm),
+      g_min_speed_mps,
+      g_base_speed_mps);
 
   g_latest_steer_cmd = steer_cmd;   // -1 ~ +1
   g_latest_speed_cmd = speed_cmd;   // m/s 개념
 
   ROS_INFO_THROTTLE(0.5,
-    "[lane_ctrl][CB] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f (steer_gain=%.3f)",
-    dx, err_norm, steer_cmd, speed_cmd, g_steer_gain);
+    "[lane_ctrl][PID] dx=%.1fpx errN=%.3f P=%.3f I=%.3f D=%.3f -> steer=%.3f v=%.2f",
+    dx, err_norm, P, I, D, steer_cmd, speed_cmd);
 }
+
 
 // -------------------- 콜백: center_point_px --------------------
 void CB_center(const geometry_msgs::PointStamped::ConstPtr& msg)
