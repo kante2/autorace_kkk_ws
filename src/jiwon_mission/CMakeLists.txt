@@ -52,3 +52,13 @@ target_link_libraries(gate
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
 )
+
+
+add_executable(stopline_contour_imagetest
+  src/stopline_contour_imagetest.cpp
+)
+
+target_link_libraries(stopline_contour_imagetest
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
