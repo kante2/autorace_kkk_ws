@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-vision-opencv ros-noetic-cv-bridge ros-noetic-image-transport \
     ros-noetic-geographic-msgs ros-noetic-diagnostic-updater \ 
     ros-noetic-image-geometry ros-noetic-camera-info-manager ros-noetic-serial \
-    ros-noetic-vision-msgs libgeographic-dev geographiclib-tools \
+    ros-noetic-vision-msgs libgeographic-dev geographiclib-tools ros-noetic-hector-slam \
     # 주행/제어 메시지
     ros-noetic-sparse-bundle-adjustment ros-noetic-map-server \ 
     ros-noetic-ackermann-msgs ros-noetic-navigation ros-noetic-teb-local-planner \

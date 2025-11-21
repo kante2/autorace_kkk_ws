@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import rospy
@@ -8,7 +8,7 @@ import math
 
 class CmdVelToWebot(object):
     def __init__(self):
-        rospy.init_node("cmdvel_to_f1tenth")
+        rospy.init_node("cmd_to_webot")
 
         self.wheelbase = rospy.get_param("~wheelbase", 0.26)
         self.use_steer_direct = rospy.get_param("~use_steer_direct", True)
@@ -28,7 +28,7 @@ class CmdVelToWebot(object):
         self.servo_pub = rospy.Publisher("/commands/servo/position",
                                          Float64, queue_size=1, latch=latched)
 
-        rospy.loginfo("[cmdvel_to_f1tenth] started")
+        rospy.loginfo("[cmdvel_to_webot] started")
 
     def cmdvel_callback(self, msg):
         v = msg.linear.x
@@ -40,7 +40,15 @@ class CmdVelToWebot(object):
         # 1000 → 0.26 m/s
         motor_gain = 1000.0 / 0.26
         motor_cmd = Float64()
-        motor_cmd.data = v * motor_gain
+        motor_raw = v * motor_gain
+        if abs(v) < 1e-6:
+            motor_cmd.data = 0.0  # planner가 정지 명령을 낼 때만 0
+        else:
+            # 1000 미만이면 구동이 안 되어 최소 구동값 보장
+            if motor_raw >= 0.0:
+                motor_cmd.data = max(motor_raw, 1000.0)
+            else:
+                motor_cmd.data = min(motor_raw, -1000.0)
         self.motor_pub.publish(motor_cmd)
 
         # ================================

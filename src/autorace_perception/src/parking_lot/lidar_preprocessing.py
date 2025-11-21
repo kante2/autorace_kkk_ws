@@ -16,8 +16,8 @@ def preprocess_lidar(scan_msg):
     raw_angles = scan_msg.angle_min + np.arange(len(ranges_raw)) * scan_msg.angle_increment
     angle_ranges = np.mod(raw_angles, 2 * pi)  # normalize to [0, 2π)
 
-    lower_bound = 90 / 180 * pi
-    upper_bound = 270 / 180 * pi
+    lower_bound = 180 / 180 * pi
+    upper_bound = 360 / 180 * pi
     mask = (angle_ranges <= upper_bound) & (angle_ranges >= lower_bound) # 120 ~ 240 
 
     dist_ranges = ranges[mask]

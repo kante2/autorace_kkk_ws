@@ -1,0 +1,18 @@
+<launch>
+  <node pkg="autorace_perception" type="cmd_to_webot.py" name="cmdvel_bridge" output="screen">
+    <param name="use_steer_direct" value="true"/>
+    <param name="wheelbase" value="0.26"/>
+    <param name="steer_center" value="0.5"/>
+    <param name="steer_gain" value="1.0"/>
+    <param name="steer_limit" value="1.0"/>
+  </node>
+  
+  <node pkg="move_base" type="move_base" name="move_base" output="screen">
+    <rosparam file="$(find autorace_perception)/config/costmap_common_params.yaml" command="load"/>
+    <rosparam file="$(find autorace_perception)/config/global_costmap_params.yaml" command="load"/>
+    <rosparam file="$(find autorace_perception)/config/local_costmap_params.yaml" command="load"/>
+    <rosparam file="$(find autorace_perception)/config/teb_local_planner_params.yaml" command="load"/>
+
+    <param name="base_local_planner" value="teb_local_planner/TebLocalPlannerROS"/>
+  </node>
+</launch>

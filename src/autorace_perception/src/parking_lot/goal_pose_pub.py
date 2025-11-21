@@ -94,8 +94,8 @@ def compute_goal_from_lines(lines, min_width, min_depth, wall_offset):
     goal_x = goal_pos[0]
     goal_y = goal_pos[1]
 
-    # goal yaw: n_back 방향을 바라보도록
-    goal_yaw = math.atan2(n_back[1], n_back[0])
+    # goal yaw: 뒷벽 법선 방향을 기준으로 반시계 90도 회전
+    goal_yaw = math.atan2(n_back[1], n_back[0]) + math.pi / 2.0
 
     return True, goal_x, goal_y, goal_yaw
 
@@ -103,16 +103,12 @@ _yaw_offset_cached = None
 
 def _get_goal_yaw_offset():
     """
-    Lazily fetch yaw offset between lidar frame과 base_link (deg, default 0).
-    양수는 반시계 방향 회전.
+    Lazily fetch yaw offset between lidar frame과 base_link.
+    기본값은 180deg (후방=0deg 스캔)이며, 필요시 ~goal_yaw_offset_deg로 덮어쓰기.
     """
     global _yaw_offset_cached
     if _yaw_offset_cached is None:
-        param_name = "~goal_yaw_offset_deg"
-        if rospy.has_param(param_name):
-            yaw_offset_deg = rospy.get_param(param_name)
-        else:
-            yaw_offset_deg = 180.0  # 기본적으로 라이다가 후방 0deg이므로 180deg 보정
+        yaw_offset_deg = rospy.get_param("~goal_yaw_offset_deg", 180.0)
         _yaw_offset_cached = math.radians(yaw_offset_deg)
     return _yaw_offset_cached
 
@@ -123,7 +119,7 @@ def publish_parking_goal(goal_pub,
                          goal_x,
                          goal_y,
                          goal_yaw,
-                         frame_id="base_link"):
+                         frame_id="odom"):
     """
     계산된 goal pose를 PoseStamped로 만들어 publish하는 함수
     goal_pub: geometry_msgs/PoseStamped publisher
@@ -142,3 +138,4 @@ def publish_parking_goal(goal_pub,
     msg.pose.orientation = Quaternion(*q)
 
     goal_pub.publish(msg)
+    return yaw_with_offset

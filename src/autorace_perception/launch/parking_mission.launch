@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="autorace_perception" type="parking_mission.py" name="parking_mission" output="screen"/>
+
+</launch>

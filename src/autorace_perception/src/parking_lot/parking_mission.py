@@ -21,7 +21,7 @@ class Parking_mission:
         
         # TEB로 goal 보내는 publisher
         self.goal_pub = rospy.Publisher(
-            "/move_base_park/goal",  # TEB가 듣는 토픽에 맞게 바꿔도 됨
+            "/move_base_simple/goal",  # 기본 move_base/TEB가 구독하는 PoseStamped 토픽
             PoseStamped,
             queue_size=1
         )
@@ -47,14 +47,15 @@ class Parking_mission:
         #print(f"dist_ranges:{dist_ranges}") 
 
         is_u_shape, lines = self.parking_detect(angle_ranges, dist_ranges) 
-        if is_u_shape:
-            print("U-shape parking structure detected")
-        else:
+        if not is_u_shape:
             print("No parking")
-        
-        # 이미 goal 보냈으면 또 안 보냄 (원하면 이 로직은 빼도 됨)
-        # if self.goal_published:
-        #    return
+            return
+
+        print("U-shape parking structure detected")
+
+        # 이미 goal 보냈으면 또 안 보냄
+        if self.goal_published:
+            return
 
         # lines로부터 goal pose 계산
         success, gx, gy, gyaw = compute_goal_from_lines(
@@ -69,17 +70,17 @@ class Parking_mission:
             return
 
         # goal pose publish
-        publish_parking_goal(
+        adjusted_yaw = publish_parking_goal(
             self.goal_pub,
             gx,
             gy,
             gyaw,
-            frame_id="base_link"  # 지금은 lidar = base_link 기준
+            frame_id="odom"  
         )
 
         rospy.loginfo(
             "Parking goal published: x=%.2f, y=%.2f, yaw=%.1f deg",
-            gx, gy, degrees(gyaw)
+            gx, gy, degrees(adjusted_yaw)
         )
 
         self.goal_published = True

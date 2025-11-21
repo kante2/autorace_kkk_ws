@@ -1,7 +1,7 @@
 # config/global_costmap_params.yaml
 
 global_costmap:
-  global_frame: base_link        # map/odom 말고 base_link 사용
+  global_frame: odom        
   robot_base_frame: base_link
   update_frequency: 10.0
   publish_frequency: 5.0
