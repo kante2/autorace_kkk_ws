@@ -1,52 +1,53 @@
-// include/autorace_control/controller_obstacle_dbscan.hpp
 #pragma once
 
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
-#include <sensor_msgs/PointCloud2.h>
 #include <visualization_msgs/Marker.h>
-#include <laser_geometry/laser_geometry.h>
-#include <vector>
+#include <sensor_msgs/PointCloud2.h>
 
-// 장애물 포인트 2D 구조체
-struct Point2D
-{
-  double x;
-  double y;
-};
+// -------------------- extern 전역 (mission_labacorn에서 실제 정의) --------------------
 
-// ===== 이 노드 전용 전역 (extern) =====
+// 토픽 이름들
+extern std::string g_obs_scan_topic;
+extern std::string g_obs_marker_topic;
+extern std::string g_obs_cloud_topic;
 
-// 퍼블리셔 (Marker / PointCloud2)
-// 정의는 controller_obstacle_dbscan_node.cpp 안에서 함
-extern ros::Publisher g_pub_marker_obs;
-extern ros::Publisher g_pub_cloud_obs;
+// DBSCAN / ROI 파라미터
+extern double g_obs_eps;
+extern int    g_obs_min_samples;
+extern double g_obs_range_min;
+extern double g_obs_range_max;
+extern double g_obs_front_min_deg;
+extern double g_obs_front_max_deg;
+extern double g_obs_lane_offset_y;
 
-// LaserProjection (scan -> PointCloud2)
-extern laser_geometry::LaserProjection g_projector_obs;
+// Yaw -> 조향/속도 파라미터
+extern double g_obs_yaw_gain;
+extern double g_obs_follow_speed_mps;
+extern double g_obs_min_speed_mps;
 
-// ===== 파라미터 전역 (extern) =====
-extern double g_eps;
-extern int    g_min_samples;
-extern double g_range_min;
-extern double g_range_max;
-extern double g_front_min_deg;
-extern double g_front_max_deg;
+// Timeout
+extern double    g_obs_scan_timeout_sec;
 
-extern double g_follow_speed_mps;
-extern double g_min_speed_mps;
-extern double g_k_yaw;
+// 상태 변수 (scan / target)
+extern bool      g_obs_have_scan_time;
+extern ros::Time g_obs_last_scan_time;
+extern bool      g_obs_have_target;
+extern double    g_obs_latest_steer_cmd;   // -1 ~ +1
+extern double    g_obs_latest_speed_cmd;   // m/s
 
-// ===== 함수 프로토타입 =====
+// 디버깅/시각화 퍼블리셔 (mission_labacorn에서 advertise)
+extern ros::Publisher g_pub_obs_marker;
+extern ros::Publisher g_pub_obs_cloud;
 
-// 이 노드 전용 파라미터 로딩
-void loadObstacleParams(ros::NodeHandle& pnh);
 
-// DBSCAN 클러스터링
-std::vector<int> dbscan(const std::vector<Point2D>& points);
+// -------------------- 함수 프로토타입 --------------------
 
-// No target일 때 최소 속도(천천히 전진 or 정지)
-void publishMinimalSpeed(bool move_forward = true);
+// YAML + 파라미터 서버에서 obstacle DBSCAN 관련 파라미터 로드
+//  - pnh는 일반적으로 ros::NodeHandle("~")
+void loadParams_obstacle_dbscan(ros::NodeHandle& pnh);
 
 // LaserScan 콜백
-void scanCallback(const sensor_msgs::LaserScanConstPtr& scan);
+//  - /scan (또는 YAML에서 지정한 토픽) 구독용
+//  - 내부에서 g_obs_latest_steer_cmd / g_obs_latest_speed_cmd 업데이트
+void CB_obstacle_scan(const sensor_msgs::LaserScan::ConstPtr& msg);

@@ -1,18 +1,24 @@
-# config/obstacle_dbscan.yaml
+# Obstacle DBSCAN 기반 추종 로직 파라미터
+# ~ 네임스페이스 기준 (예: mission_labacorn 노드의 private 파라미터)
 
-# --- DBSCAN 파라미터 ---
-eps: 0.2                # 클러스터 간 거리 (m)
-min_samples: 2          # 최소 점 개수
+# --- Topics ---
+obstacle_scan_topic:   "/scan"
+obstacle_marker_topic: "/dbscan_lines"
+obstacle_cloud_topic:  "/scan_points"
 
-# --- 사용 거리 범위 ---
-range_min: 0.13         # 최소 거리 (m)
-range_max: 0.90         # 최대 거리 (m)
+# --- DBSCAN & ROI ---
+obstacle_eps:            0.2     # DBSCAN eps
+obstacle_min_samples:    4       # DBSCAN min_samples
+obstacle_range_min:      0.13    # 사용 최소 거리 [m]
+obstacle_range_max:      0.9     # 사용 최대 거리 [m]
+obstacle_front_min_deg:  60.0    # 전방 각도 최소 [deg] (0~360 기준)
+obstacle_front_max_deg:  300.0   # 전방 각도 최대 [deg]
+obstacle_lane_offset_y:  0.12    # 한쪽만 있을 때 중심 보정량 [m]
 
-# --- 사용 각도 (LaserScan 0~360 deg 기준) ---
-front_min_deg: 60.0     # 전방 시작 각도 (deg)
-front_max_deg: 300.0    # 전방 끝 각도 (deg)
+# --- Yaw -> 조향/속도 ---
+obstacle_yaw_gain:           0.8   # yaw -> tanh 조향 gain
+obstacle_follow_speed_mps:   1.0   # 장애물 추종 시 속도 [m/s]
+obstacle_min_speed_mps:      0.7   # 필요 시 사용 가능 (현재는 그대로 사용 안 함)
 
-# --- 속도 / 조향 파라미터 ---
-follow_speed_mps: 1.0   # 정상 회피 주행 속도 [m/s]
-min_speed_mps: 0.3      # 타겟 없을 때 천천히 전진 [m/s]
-k_yaw: 1.2              # yaw → steer_cmd 게인
+# --- Timeout ---
+obstacle_scan_timeout_sec:   0.5   # 스캔 타임아웃 [s]

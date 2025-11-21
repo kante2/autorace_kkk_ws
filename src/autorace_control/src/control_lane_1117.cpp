@@ -300,7 +300,7 @@ int main(int argc, char** argv)
     double steer_norm = clamp(steer_cmd, -1.0, 1.0);
 
     // 방향 뒤집기
-    steer_norm *= (-g_steer_sign);
+    steer_norm *= (-g_steer_sign);ClusterFollower
 
     // 0.5 = 직진, ±servo_range 안에서 사용
     double servo_range = std::min(g_servo_center - g_servo_min,

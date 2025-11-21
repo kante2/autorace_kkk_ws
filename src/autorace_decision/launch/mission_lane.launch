@@ -9,4 +9,10 @@
     <rosparam command="load"
               file="$(find autorace_control)/config/controller_lane_logic.yaml" />
   </node>
+
+  <!-- 차선 인식(perception) 노드: rosrun autorace_perception lane_kante_wego -->
+  <node pkg="autorace_perception"
+        type="lane_kante_wego"
+        name="lane_kante_wego"
+        output="screen" />
 </launch>
