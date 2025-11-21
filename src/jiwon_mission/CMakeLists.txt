@@ -45,19 +45,6 @@ include_directories(
 
 add_definitions(${PCL_DEFINITIONS})
 
-# --- bev_binary ---
-add_executable(bev_binary src/bev_binary.cpp)
-target_link_libraries(bev_binary
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
-# --- stopline_ratio ---
-add_executable(stopline_ratio src/stopline_ratio.cpp)
-target_link_libraries(stopline_ratio
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
 
 # --- gate (mission7 게이트 노드) ---
 add_executable(gate src/gate.cpp)

@@ -1,12 +1,6 @@
 // mission 7: 차단기 미션
 // 차단기 앞에서 정지 후 차단기가 올라가면 주행하는 미션
 
-// Lidar (laser/scan) 전처리
-// 외벽 구분을 위해 전방 기준 가까운 거리 내 Lidar Point 처리
-// 특정 각도 내에 연속적으로 유효한 값 나타나면 정지 flag (지속)
-// 해당 Lidar Points가 사라지면(올라가면) 주행 flag
-// lidar point 가져올 때 로봇과 차단기 사이의 거리 처리
-
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -24,10 +18,18 @@
 #include <pcl/point_cloud.h>
 #include <pcl/kdtree/kdtree_flann.h>
 
+// ================== 기본 타입 ==================
 struct Point2D
 {
     double x;
     double y;
+};
+
+// 게이트 상태
+enum GateState {
+    GATE_UNKNOWN = 0,
+    GATE_DOWN,
+    GATE_UP
 };
 
 // ===== 전역 ROS I/O =====
@@ -38,10 +40,11 @@ ros::Publisher  pub_speed_;
 laser_geometry::LaserProjection projector_;
 
 // ===== 전역 파라미터 =====
-double eps_          = 0.2;    // 클러스터 간 거리 [m]
-int    min_samples_  = 5;      // DBSCAN 최소 점 수
-double basic_speed_  = 1500.0; // 게이트 올라가 있을 때 기본 속도
-double stop_speed_   = 0.0;    // 정지 속도
+double eps_            = 0.2;    // 클러스터 간 거리 [m]
+int    min_samples_    = 10;      // DBSCAN 최소 점 수
+double basic_speed_    = 1000.0; // 게이트 올라가 있을 때 기본 속도
+double stop_speed_     = 0.0;    // 정지 속도
+double gate_stop_dist_ = 2.0;    // 로봇-게이트 중심 거리 임계값 [m]
 
 // 게이트 상태 히스테리시스
 int gate_down_count_   = 0;
@@ -49,13 +52,7 @@ int gate_up_count_     = 0;
 int gate_down_thresh_  = 3; // 연속 n프레임 이상 DOWN일 때 stop
 int gate_up_thresh_    = 3; // 연속 n프레임 이상 UP일 때 go
 
-enum GateState {
-    GATE_UNKNOWN = 0,
-    GATE_DOWN,
-    GATE_UP
-};
-
-// ====== DBSCAN PCL KD-tree ======
+// Lidar Clustering (DBSCAN)
 std::vector<int> dbscan(const std::vector<Point2D>& points)
 {
     const int n = static_cast<int>(points.size());
@@ -169,18 +166,41 @@ std::vector<int> dbscan(const std::vector<Point2D>& points)
     return labels;
 }
 
-// ===== 게이트 상태 추정 =====
-GateState estimateGateState(const std::vector<Point2D>& points,
-                            const std::vector<int>& labels)
+// 클러스터 중심점 계산 함수
+bool compute_CenterPoint(const std::vector<Point2D>& cluster,
+                         double& mx, double& my)
 {
-    if (points.empty() || labels.empty()) {
-        // 아무것도 안 보이면 게이트가 없거나 올라가 있다고 가정
-        return GATE_UP;
+    if (cluster.empty()) {
+        mx = my = 0.0;
+        return false;
     }
+
+    mx = 0.0;
+    my = 0.0;
+    for (const auto& p : cluster) {
+        mx += p.x;
+        my += p.y;
+    }
+    mx /= cluster.size();
+    my /= cluster.size();
+    return true;
+}
+
+// 가장 가까운 게이트 클러스터 선택 
+bool compute_GateCluster(const std::vector<Point2D>& points,
+                         const std::vector<int>& labels,
+                         std::vector<Point2D>& gate_cluster,
+                         double& mx, double& my)
+{
+    gate_cluster.clear();
+    mx = my = 0.0;
+
+    if (points.empty() || labels.empty())
+        return false;
 
     int max_label = *std::max_element(labels.begin(), labels.end());
     if (max_label <= 0)
-        return GATE_UP;
+        return false;
 
     // 클러스터별 포인트 모으기
     std::vector<std::vector<Point2D>> clusters(max_label + 1);
@@ -191,55 +211,62 @@ GateState estimateGateState(const std::vector<Point2D>& points,
     }
 
     // 가장 가까운 클러스터 선택 (mean_x 최소)
-    int best_id = -1;
-    double best_x = std::numeric_limits<double>::max();
+    int    best_id = -1;
+    double best_x  = std::numeric_limits<double>::max();
 
-    for (int cid = 1; cid <= max_label; ++cid) {
+    for (int cid = 1; cid <= max_label; ++cid)
+    {
         const auto& c = clusters[cid];
         if (c.size() < static_cast<size_t>(min_samples_))
             continue;
 
-        double mean_x = 0.0;
-        for (const auto& p : c) mean_x += p.x;
-        mean_x /= c.size();
+        double cx, cy;
+        if (!compute_CenterPoint(c, cx, cy))
+            continue;
 
-        if (mean_x < best_x) {
-            best_x = mean_x;
+        if (cx < best_x) {
+            best_x = cx;
             best_id = cid;
         }
     }
 
-    // 유효 클러스터 없음 -> 게이트 안 보인다고 간주
-    if (best_id < 0) {
+    if (best_id < 0)
+        return false;
+
+    gate_cluster = clusters[best_id];
+    compute_CenterPoint(gate_cluster, mx, my);
+
+    return true;
+}
+
+// 로봇-게이트 거리 계산
+double compute_Distance(double x, double y)
+{
+    return std::sqrt(x * x + y * y);
+}
+
+// 게이트 상태 계산 (가로로 긴 막대형 인지)
+GateState compute_GateState(const std::vector<Point2D>& gate_cluster)
+{
+    if (gate_cluster.empty())
+        return GATE_UP;  // 아무것도 안 보이면 UP 가정
+
+    double mx, my;
+    if (!compute_CenterPoint(gate_cluster, mx, my))
         return GATE_UP;
-    }
-
-    const auto& cluster = clusters[best_id];
-
-    // x, y variance -> orientation 판단
-    double mx = 0.0;
-    double my = 0.0;
-    for (const auto& p : cluster) {
-        mx += p.x;
-        my += p.y;
-    }
-    mx /= cluster.size();
-    my /= cluster.size();
 
     double var_x = 0.0;
     double var_y = 0.0;
-    for (const auto& p : cluster) {
+    for (const auto& p : gate_cluster) {
         double dx = p.x - mx;
         double dy = p.y - my;
         var_x += dx * dx;
         var_y += dy * dy;
     }
-    var_x /= cluster.size();
-    var_y /= cluster.size();
+    var_x /= gate_cluster.size();
+    var_y /= gate_cluster.size();
 
-    // x: 전/후방, y: 좌우
-    // var_y >> var_x -> 좌우로 누운 막대기 (게이트 내려온 상태)
-    const double ratio = 3.0;
+    double ratio = 2.0;  // var_y >> var_x 이면 좌우로 긴 막대기
     if (var_y > ratio * var_x) {
         ROS_INFO_THROTTLE(0.5, "[gate_state] Gate DOWN (horizontal cluster detected)");
         return GATE_DOWN;
@@ -249,20 +276,42 @@ GateState estimateGateState(const std::vector<Point2D>& points,
     }
 }
 
-// ===== 제어 =====
-void pubGateSign(bool gate_down)
+// 속도 제어 (거리 + 게이트 상태)
+void pubGateSign(bool stop)
 {
     std_msgs::Float64 speed_msg;
 
-    if (gate_down) {
+    if (stop) {
         speed_msg.data = stop_speed_; // 정지
-        ROS_INFO_THROTTLE(1.0, "→ GATE DOWN: Stopping");
+        ROS_INFO_THROTTLE(1.0, "→ GATE DOWN & CLOSE: Stopping");
     } else {
         speed_msg.data = basic_speed_; // 전진
-        ROS_INFO_THROTTLE(1.0, "→ GATE UP / No target, Moving forward");
+        ROS_INFO_THROTTLE(1.0, "→ GATE UP or FAR: Moving forward");
     }
 
     pub_speed_.publish(speed_msg);
+}
+
+bool SpeedControl(bool gate_down_final, double gate_dist)
+{
+    bool should_stop = false;
+
+    if (gate_down_final &&
+        std::isfinite(gate_dist) &&
+        gate_dist <= gate_stop_dist_)
+    {
+        should_stop = true;
+    }
+
+    ROS_INFO_THROTTLE(0.5,
+        "[mission7] gate_down_final=%d, dist=%.3f, stop_dist=%.3f -> %s",
+        gate_down_final ? 1 : 0,
+        gate_dist,
+        gate_stop_dist_,
+        should_stop ? "STOP" : "GO");
+
+    pubGateSign(should_stop);
+    return should_stop;
 }
 
 // ================== Scan Callback ==================
@@ -276,7 +325,7 @@ void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
     // --- 포인트 필터링: 13cm ~ 40cm, 전방 기준 ±120도 ---
     for (const auto& r : scan->ranges)
     {
-        if (!std::isfinite(r) || r < 0.13 || r > 0.4)
+        if (!std::isfinite(r) || r < 0.10 || r > 0.5)
         {
             angle += scan->angle_increment;
             continue;
@@ -305,7 +354,7 @@ void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
     projector_.projectLaser(*scan, cloud);
     pub_cloud_.publish(cloud);
 
-    // --- DBSCAN ---
+    // --- (1) Lidar Clustering ---
     std::vector<int> labels = dbscan(points);
     int max_label = 0;
     if (!labels.empty())
@@ -313,10 +362,29 @@ void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
 
     ROS_INFO_THROTTLE(1.0, "Clusters detected: %d", max_label);
 
-    // --- 게이트 상태 추정 ---
-    GateState gs = estimateGateState(points, labels);
+    // --- (2) 게이트 클러스터 선택 + 중심점 계산 ---
+    std::vector<Point2D> gate_cluster;
+    double gate_cx = 0.0, gate_cy = 0.0;
+    bool has_gate_cluster =
+        compute_GateCluster(points, labels, gate_cluster, gate_cx, gate_cy);
 
-    // 히스테리시스 (연속 프레임 카운트)
+    // --- (3) 거리 & 게이트 상태 처리 ---
+    double   gate_dist = std::numeric_limits<double>::infinity();
+    GateState gs       = GATE_UP;
+
+    if (has_gate_cluster) {
+        gate_dist = compute_Distance(gate_cx, gate_cy);
+        ROS_INFO_THROTTLE(0.5,
+            "[gate] center=(%.3f, %.3f), dist=%.3f",
+            gate_cx, gate_cy, gate_dist);
+
+        gs = compute_GateState(gate_cluster);
+    } else {
+        ROS_INFO_THROTTLE(0.5, "[gate] no valid gate cluster -> assume UP");
+        gs = GATE_UP;
+    }
+
+    // --- (4) 히스테리시스 적용 ---
     bool gate_down_final = false;
 
     if (gs == GATE_DOWN) {
@@ -334,10 +402,11 @@ void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
         gate_down_final = false;
     }
 
-    // --- 속도 명령 퍼블리시 ---
-    pubGateSign(gate_down_final);
+    // --- (5) 속도 제어 (거리 + 게이트 상태) ---
+    SpeedControl(gate_down_final, gate_dist);
 }
 
+// ================== main ==================
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "mission7_gate_node");
@@ -351,6 +420,7 @@ int main(int argc, char** argv)
     pnh.param("stop_speed",       stop_speed_,       stop_speed_);
     pnh.param("gate_down_thresh", gate_down_thresh_, gate_down_thresh_);
     pnh.param("gate_up_thresh",   gate_up_thresh_,   gate_up_thresh_);
+    pnh.param("gate_stop_dist",   gate_stop_dist_,   gate_stop_dist_);
 
     // Pub/Sub
     sub_scan_   = nh.subscribe<sensor_msgs::LaserScan>(

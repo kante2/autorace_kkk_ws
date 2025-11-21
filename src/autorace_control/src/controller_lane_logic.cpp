@@ -1,4 +1,4 @@
-#include "autorace_control/controller_lane_logic.hpp"
+#include "controller_lane_logic.hpp"
 
 // 여기서는 extern 전역들을 그대로 사용한다.
 // 실제 정의는 controller_lane_wego.cpp 안에 있음.
@@ -211,4 +211,3 @@ void publish_motor_commands(double steer_cmd, double speed_cmd)
     "[lane_ctrl][pub] steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f",
     steer_cmd, servo_hw, motor_cmd, speed_cmd);
 }
- ,

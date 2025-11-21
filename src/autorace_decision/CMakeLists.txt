@@ -43,9 +43,5 @@ add_executable(main_node src/main_node.cpp)
 target_compile_features(main_node PRIVATE cxx_std_11)
 target_link_libraries(main_node ${catkin_LIBRARIES})
 
-add_executable(mission_gate src/mission_gate.cpp)
-target_compile_features(mission_gate PRIVATE cxx_std_11)
-target_link_libraries(mission_gate ${catkin_LIBRARIES})
-
 
 
