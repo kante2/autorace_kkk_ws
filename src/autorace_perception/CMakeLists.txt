@@ -94,6 +94,8 @@ add_wego_node(lane_kante_wego_node src/lane_kante_wego.cpp)
 # === lane_jun_wego ===
 add_wego_node(lane_jun_wego_node   src/lane_jun_wego.cpp)
 
+add_wego_node(lane_crosswalk   src/lane_crosswalk.cpp)
+
 ## 나중에 새 노드 추가할 때는 밑에 한 줄만 추가:
 ## add_wego_node(새노드이름_node src/새파일이름.cpp)
 
@@ -103,5 +105,6 @@ add_wego_node(lane_jun_wego_node   src/lane_jun_wego.cpp)
 install(TARGETS
   lane_kante_wego_node
   lane_jun_wego_node
+  lane_crosswalk_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
