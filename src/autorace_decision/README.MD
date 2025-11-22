@@ -9,3 +9,12 @@ main() 은 딱 한 군데: main_node.cpp
 mission_*은 각 미션이 잘 돌아가는지 디버깅 하기 위한 노드이다,.
 실행은 mission_*.launch 로 할수 있도록 구성하였다.
 
+mission_*_toMain.cpp → main_node에서 호출하는 모듈용 코드
+mission_lane_init(nh, pnh)
+mission_lane_step()
+main 없음, ros::init 없음
+
+​
+
+mission_*.cpp → 단독 실행하는 개별 노드
+자기 안에 int main(...) 있고 ros::init/while loop 가 있음
