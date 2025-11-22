@@ -20,13 +20,18 @@ void mission_gate_step();
 void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_crosswalk_step();
 
+// missin_rotary.cpp
+void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+void mission_rotary_step();
+
 // -------------------- 미션 상태 enum --------------------
 enum MissionState
 {
   MISSION_LANE = 0,
   MISSION_LABACORN,
   MISSION_GATE,
-  MISSION_CROSSWALK
+  MISSION_CROSSWALK,
+  MISSION_ROTARY
 };
 
 MissionState g_current_state = MISSION_LANE;
@@ -35,6 +40,7 @@ MissionState g_current_state = MISSION_LANE;
 bool g_labacorn_detected   = false;
 bool g_gate_detected       = false;
 bool g_crosswalk_detected  = false;
+bool g_rotary_detected     = false;
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -54,6 +60,12 @@ void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
   g_crosswalk_detected = msg->data;
 }
 
+// -------------------- 콜백: rotary 감지 --------------------
+void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_rotary_detected = msg->data;
+}
+
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -67,6 +79,7 @@ int main(int argc, char** argv)
   std::string topic_labacorn_detected;
   std::string topic_gate_detected;
   std::string topic_crosswalk_detected;
+  std::string topic_rotary_detected;
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
@@ -79,11 +92,15 @@ int main(int argc, char** argv)
   pnh.param<std::string>("crosswalk_detected_topic",
                          topic_crosswalk_detected,
                          std::string("/crosswalk_detected"));
+  pnh.param<std::string>("rotary_detected_topic",
+                         topic_rotary_detected,
+                         std::string("/rotary_detected"));
 
   ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
            ros::names::resolve(topic_gate_detected).c_str(),
-           ros::names::resolve(topic_crosswalk_detected).c_str());
+           ros::names::resolve(topic_crosswalk_detected).c_str(),
+           ros::names::resolve(topic_rotary_detected).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
@@ -92,12 +109,15 @@ int main(int argc, char** argv)
       nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
   ros::Subscriber sub_crosswalk =
       nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
+  ros::Subscriber sub_rotary =
+      nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
   mission_labacorn_init(nh, pnh);
   mission_gate_init(nh, pnh);
   mission_crosswalk_init(nh, pnh);
+  mission_rotary_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
@@ -125,6 +145,10 @@ int main(int argc, char** argv)
     {
       g_current_state = MISSION_LABACORN;
     }
+    else if (g_rotary_detected)
+    {
+      g_current_state = MISSION_ROTARY;
+    }
     else
     {
       g_current_state = MISSION_LANE;
@@ -137,6 +161,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)      state_name = "LABACORN";
       else if (g_current_state == MISSION_GATE)     state_name = "GATE";
       else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
+      else if (g_current_state == MISSION_ROTARY) state_name = "ROTARY";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       prev_state = g_current_state;
@@ -162,6 +187,10 @@ int main(int argc, char** argv)
 
       case MISSION_GATE:
         mission_gate_step();
+        break;
+      
+      case MISSION_ROTARY:
+        mission_rotary_step();
         break;
 
       default:
