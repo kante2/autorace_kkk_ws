@@ -16,14 +16,15 @@
 // -------------------- 전역 상태 --------------------
 ros::Publisher g_pub_center_point;
 ros::Publisher g_pub_center_color;
-ros::Publisher g_pub_is_cross_walk;  // g_pub_go_straight → g_pub_is_cross_walk
+ros::Publisher g_pub_is_cross_walk;  // 횡단보도 플래그
+ros::Publisher g_pub_white_ratio;    // 흰색 비율 디버그용
 
 bool g_show_window = true;
 std::string g_win_src = "src_with_roi";
 std::string g_win_bev = "bev_binary_and_windows";
 
 // init ----------------------------------------------
-bool is_cross_walk = false;          // is_go_straight → is_cross_walk
+bool is_cross_walk = false;          // true면 "횡단보도 지나가라" 플래그
 
 // 파라미터
 double g_lane_width_px = 340.0;
@@ -62,7 +63,6 @@ double    g_white_ratio_threshold = 0.25;  // 흰색 비율 threshold
 bool      g_stop_active           = false; // 현재 정지 중인지 여부
 ros::Time g_stop_start_time;              // 정지 시작 시간
 double    g_stop_duration         = 7.0;   // 정지 유지 시간(초)
-ros::Publisher g_pub_white_ratio;
 
 // -------------------- 구조체 정의 --------------------
 struct LaneColorResult {
@@ -114,14 +114,13 @@ void compute_StopState(double white_ratio, const ros::Time& now)
     g_stop_start_time = ros::Time(0);
     ROS_INFO("[stopline_node] STOP RELEASED (duration done)");
   }
-  
 }
 
 // -------------------- 헬퍼 함수들 --------------------
 void pub_go_straight_cmd(const ros::Publisher& pub, bool go_straight)
 {
   std_msgs::Bool msg;
-  msg.data = go_straight;  // 여기서는 bool 값만 전달(이제 is_cross_walk가 들어감)
+  msg.data = go_straight;  // is_cross_walk 값
   pub.publish(msg);
 }
 
@@ -466,7 +465,41 @@ bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
   return false;
 }
 
-bool computeCrossWalk()...
+// 횡단보도(정지선) 인식 + 7초 정지 + 2초 플래그 로직을 한 함수로 묶기
+bool computeCrossWalk(double white_ratio, const ros::Time& now)
+{
+  // 1) 정지 상태 업데이트
+  compute_StopState(white_ratio, now);
+
+  // 2) 정지 상태에서 풀린 뒤 2초 동안 is_cross_walk = true
+  static bool      last_stop_active      = false;
+  static ros::Time go_straight_start_time;
+
+  // "방금 정지해제 된 순간" 감지
+  if (last_stop_active && !g_stop_active)
+  {
+    is_cross_walk          = true;
+    go_straight_start_time = now;
+    ROS_INFO("[stopline_node] crosswalk flag START (2s)");
+  }
+
+  // 플래그 유지 시간 체크 (2초 지나면 false)
+  if (is_cross_walk)
+  {
+    double dt = (now - go_straight_start_time).toSec();
+    if (dt >= 2.0)
+    {
+      is_cross_walk = false;
+      ROS_INFO("[stopline_node] crosswalk flag END");
+    }
+  }
+
+  // 다음 프레임을 위해 상태 저장
+  last_stop_active = g_stop_active;
+
+  // 현재 횡단보도 플래그 반환
+  return is_cross_walk;
+}
 
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
@@ -505,49 +538,22 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     // 2) BEV
     cv::Mat bev_bgr = warpToBev(bgr, roi_poly_pts);
 
-    // ------------------------------------------------------------
     // 3) 이진화
     cv::Mat bev_binary = binarizeLanes(bev_bgr);
 
-    // 3-1) 횡단보도(정지선) 인식: 흰색 비율 계산
+    // 3-1) 횡단보도(정지선) 인식: 흰색 비율 계산 + 퍼블리시
     double white_ratio = computeWhiteRatio(bev_binary);
     std_msgs::Float64 ratio_msg;
     ratio_msg.data = white_ratio;
     g_pub_white_ratio.publish(ratio_msg);
 
-    // 3-2) 정지 상태 업데이트 (7초 정지 등)
+    // 3-2) 정지/횡단보도 플래그 계산
     ros::Time now = ros::Time::now();
-    compute_StopState(white_ratio, now);
+    bool crosswalk_flag = computeCrossWalk(white_ratio, now);
 
-    // 3-3) 정지 상태가 끝난 후 2초간 플래그 ON
-    static bool      last_stop_active      = false;
-    static ros::Time go_straight_start_time;
-
-    // 정지 중이었다가 방금 풀린 순간
-    if (last_stop_active && !g_stop_active)
-    {
-      is_cross_walk         = true;          // is_go_straight → is_cross_walk
-      go_straight_start_time = now;
-      ROS_INFO("[stopline_node] go_straight START (2s)");
-    }
-
-    // 플래그 상태에서 2초가 지나면 OFF
-    if (is_cross_walk)
-    {
-      double dt = (now - go_straight_start_time).toSec();
-      if (dt >= 2.0)
-      {
-        is_cross_walk = false;
-        ROS_INFO("[stopline_node] go_straight END");
-      }
-    }
-
-    // 현재 is_cross_walk 값을 퍼블리시
-    pub_go_straight_cmd(g_pub_is_cross_walk, is_cross_walk);
+    // 3-3) 현재 is_cross_walk 값을 퍼블리시
+    pub_go_straight_cmd(g_pub_is_cross_walk, crosswalk_flag);
     // ------------------------------------------------------------
-
-    // 다음 프레임을 위한 상태 저장
-    last_stop_active = g_stop_active;
 
     // 4) 슬라이딩 윈도우
     cv::Mat debug_img;
@@ -660,8 +666,6 @@ int main(int argc, char** argv)
   g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1); // 0=none,1=red,2=blue
   g_pub_is_cross_walk  = nh.advertise<std_msgs::Bool>("/perception/go_straight_cmd", 1);
   g_pub_white_ratio    = nh.advertise<std_msgs::Float64>("/perception/white_ratio", 1);
-  // ↑ 토픽 이름은 그대로 /perception/go_straight_cmd 쓰고,
-  //   퍼블리셔/플래그 이름만 is_cross_walk 로 사용 중
 
   if (g_show_window) {
     cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);

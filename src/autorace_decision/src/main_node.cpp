@@ -1,7 +1,7 @@
 // main_node.cpp
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
-#include <string>   // [MOD] std::string 명시적 include
+#include <string>
 
 // -------------------- 미션 함수 선언 --------------------
 // mission_lane.cpp
@@ -16,19 +16,25 @@ void mission_labacorn_step();
 void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_gate_step();
 
+// mission_crosswalk_toMain.cpp
+void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+void mission_crosswalk_step();
+
 // -------------------- 미션 상태 enum --------------------
 enum MissionState
 {
   MISSION_LANE = 0,
   MISSION_LABACORN,
-  MISSION_GATE
+  MISSION_GATE,
+  MISSION_CROSSWALK
 };
 
 MissionState g_current_state = MISSION_LANE;
 
 // 감지 토픽 상태
-bool g_labacorn_detected = false;
-bool g_gate_detected     = false;
+bool g_labacorn_detected   = false;
+bool g_gate_detected       = false;
+bool g_crosswalk_detected  = false;
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -40,6 +46,12 @@ void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
 void CB_GateDetected(const std_msgs::Bool::ConstPtr& msg)
 {
   g_gate_detected = msg->data;
+}
+
+// -------------------- 콜백: 횡단보도 감지 --------------------
+void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_crosswalk_detected = msg->data;
 }
 
 // -------------------- main --------------------
@@ -54,28 +66,38 @@ int main(int argc, char** argv)
   // ===== 감지 토픽 이름 파라미터 =====
   std::string topic_labacorn_detected;
   std::string topic_gate_detected;
+  std::string topic_crosswalk_detected;
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
                          std::string("/labacorn_detected"));
+
   pnh.param<std::string>("gate_detected_topic",
                          topic_gate_detected,
                          std::string("/gate_detected"));
 
-  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s'",
+  pnh.param<std::string>("crosswalk_detected_topic",
+                         topic_crosswalk_detected,
+                         std::string("/crosswalk_detected"));
+
+  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
-           ros::names::resolve(topic_gate_detected).c_str());
+           ros::names::resolve(topic_gate_detected).c_str(),
+           ros::names::resolve(topic_crosswalk_detected).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
       nh.subscribe(topic_labacorn_detected, 1, CB_LabacornDetected);
   ros::Subscriber sub_gate =
       nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
+  ros::Subscriber sub_crosswalk =
+      nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
   mission_labacorn_init(nh, pnh);
   mission_gate_init(nh, pnh);
+  mission_crosswalk_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
@@ -89,10 +111,15 @@ int main(int argc, char** argv)
 
     // -----------------------------
     // 1) 미션 상태 결정 로직
+    //    (우선순위: 게이트 > 횡단보도 > 라바콘 > 기본 차선)
     // -----------------------------
     if (g_gate_detected)
     {
       g_current_state = MISSION_GATE;
+    }
+    else if (g_crosswalk_detected)
+    {
+      g_current_state = MISSION_CROSSWALK;
     }
     else if (g_labacorn_detected)
     {
@@ -107,8 +134,9 @@ int main(int argc, char** argv)
     if (g_current_state != prev_state)
     {
       const char* state_name = "LANE";
-      if (g_current_state == MISSION_LABACORN) state_name = "LABACORN";
-      else if (g_current_state == MISSION_GATE) state_name = "GATE";
+      if (g_current_state == MISSION_LABACORN)      state_name = "LABACORN";
+      else if (g_current_state == MISSION_GATE)     state_name = "GATE";
+      else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       prev_state = g_current_state;
@@ -123,7 +151,12 @@ int main(int argc, char** argv)
         mission_lane_step();
         break;
 
-      case MISSION_LABACORN: // 라바콘, 터널 둘다 같이 이 로직이 돌아가게 됨,
+      case MISSION_CROSSWALK:
+        mission_crosswalk_step();   // ← 여기 안에서 7초 정지 + 2초 직진
+        break;
+
+      case MISSION_LABACORN:
+        // 라바콘, 터널 둘 다 이 로직 사용
         mission_labacorn_step();
         break;
 
