@@ -1,5 +1,5 @@
 <launch>
-  <arg name="image_path" default="$(find jiwon_mission)/test2.jpg" />
+  <arg name="image_path" default="$(find jiwon_mission)/include/test2.jpg" />
 
   <node pkg="jiwon_mission"
         type="stopline_contour_imagetest"

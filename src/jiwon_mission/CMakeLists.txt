@@ -54,11 +54,18 @@ target_link_libraries(gate
 )
 
 
-add_executable(stopline_contour_imagetest
-  src/stopline_contour_imagetest.cpp
+add_executable(stopline_ratio
+  src/stopline_ratio.cpp
+)
+target_link_libraries(stopline_ratio
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
-target_link_libraries(stopline_contour_imagetest
+add_executable(stopline_ratio_imagetest
+  src/stopline_ratio_imagetest.cpp
+)
+target_link_libraries(stopline_ratio_imagetest
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )
