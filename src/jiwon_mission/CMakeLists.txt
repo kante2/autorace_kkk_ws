@@ -69,3 +69,19 @@ target_link_libraries(stopline_ratio_imagetest
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )
+
+add_executable(leftright
+  src/leftright.cpp
+)
+target_link_libraries(leftright
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
+
+add_executable(leftright_imagetest
+  src/leftright_imagetest.cpp
+)
+target_link_libraries(leftright_imagetest
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
