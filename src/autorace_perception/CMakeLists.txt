@@ -64,10 +64,6 @@ add_definitions(${PCL_DEFINITIONS})
 ########################################
 ##   노드 추가 편하게 쓰는 헬퍼 함수   ##
 ########################################
-# 사용 예시:
-#   add_wego_node(lane_kante_wego_node src/lane_kante_wego.cpp)
-#   add_wego_node(lane_jun_wego_node   src/lane_jun_wego.cpp)
-#
 function(add_wego_node node_name src_file)
   add_executable(${node_name}
     ${src_file}
@@ -89,12 +85,8 @@ endfunction()
 #########################
 
 # === lane_kante_wego ===
-add_wego_node(lane_kante_wego_node src/lane_kante_wego.cpp)
-
-# === lane_jun_wego ===
-add_wego_node(lane_jun_wego_node   src/lane_jun_wego.cpp)
-
-add_wego_node(lane_crosswalk   src/lane_crosswalk.cpp)
+add_wego_node(lane_kante_wego_node src/camera/lane_kante_wego.cpp)
+add_wego_node(cluster_detect_lidar src/lidar/cluster_detect_lidar.cpp)
 
 ## 나중에 새 노드 추가할 때는 밑에 한 줄만 추가:
 ## add_wego_node(새노드이름_node src/새파일이름.cpp)
@@ -104,7 +96,6 @@ add_wego_node(lane_crosswalk   src/lane_crosswalk.cpp)
 #####################
 install(TARGETS
   lane_kante_wego_node
-  lane_jun_wego_node
-  lane_crosswalk_node
+  cluster_detect_lidar
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

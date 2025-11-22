@@ -274,8 +274,8 @@ int main(int argc, char** argv)
   pnh.param<double>("front_min_deg", g_front_min_deg, 60.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 300.0);
 
-  // 감지 거리 (기본 1.0m)
-  pnh.param<double>("detect_distance", g_detect_distance, 1.0);
+  // 감지 거리 (기본 0.5m)
+  pnh.param<double>("detect_distance", g_detect_distance, 0.5);
 
   ROS_INFO("[cluster_detect_lidar] subscribe scan='%s'",
            ros::names::resolve(g_topic_scan).c_str());

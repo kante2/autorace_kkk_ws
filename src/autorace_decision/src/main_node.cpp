@@ -1,5 +1,7 @@
+// main_node.cpp
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <string>   // [MOD] std::string 명시적 include
 
 // -------------------- 미션 함수 선언 --------------------
 // mission_lane.cpp
@@ -27,9 +29,6 @@ MissionState g_current_state = MISSION_LANE;
 // 감지 토픽 상태
 bool g_labacorn_detected = false;
 bool g_gate_detected     = false;
-
-// (필요하면 나중에 “이 미션은 이미 초기화 했는지” 플래그도 둘 수 있음)
-// 지금은 3개 미션을 모두 시작할 때 init() 한 번씩 호출한다고 가정
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -74,7 +73,6 @@ int main(int argc, char** argv)
       nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
 
   // ===== 각 미션 초기화 =====
-  // lane / labacorn / gate 각각 자신의 토픽, 파라미터, pub/sub 세팅을 init 안에서 수행
   mission_lane_init(nh, pnh);
   mission_labacorn_init(nh, pnh);
   mission_gate_init(nh, pnh);
@@ -92,10 +90,6 @@ int main(int argc, char** argv)
     // -----------------------------
     // 1) 미션 상태 결정 로직
     // -----------------------------
-    // 우선순위 예시:
-    //   - gate_detected == true    → GATE 미션
-    //   - labacorn_detected == true→ LABACORN 미션
-    //   - 둘 다 false              → 기본 LANE 미션
     if (g_gate_detected)
     {
       g_current_state = MISSION_GATE;
@@ -129,7 +123,7 @@ int main(int argc, char** argv)
         mission_lane_step();
         break;
 
-      case MISSION_LABACORN:
+      case MISSION_LABACORN: // 라바콘, 터널 둘다 같이 이 로직이 돌아가게 됨,
         mission_labacorn_step();
         break;
 

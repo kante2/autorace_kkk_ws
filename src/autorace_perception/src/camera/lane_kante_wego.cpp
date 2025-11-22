@@ -463,6 +463,8 @@ bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
   return false;
 }
 
+bool computeCrossWalk()...
+
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
 {
