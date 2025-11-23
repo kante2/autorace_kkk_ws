@@ -1,7 +1,70 @@
 #include "controller_lane_logic.hpp"
 
 // 여기서는 extern 전역들을 그대로 사용한다.
-// 실제 정의는 controller_lane_wego.cpp 안에 있음.
+// (본 파일 내에 직접 정의해 self-contained로 동작하도록 수정)
+
+// -------------------- 전역 변수 정의 --------------------
+// 토픽 이름들
+std::string g_topic_center_point;
+std::string g_topic_dx_px;
+std::string g_motor_topic;
+std::string g_servo_topic;
+std::string g_is_crosswalk_topic;
+std::string g_topic_curvature_center;
+
+// BEV 중심 x 픽셀
+double g_bev_center_x_px = 320.0;
+
+// 서보 스케일
+double g_servo_center = 0.5;
+double g_servo_min = 0.0;
+double g_servo_max = 1.0;
+double g_steer_sign = -1.0;
+
+// Control 파라미터
+double g_max_abs_dx_px = 83.0;
+double g_dx_tolerance = 3.0;
+double g_steer_gain = 1.5;
+double g_alpha_ema = 0.2;
+double g_max_delta = 0.08;
+
+// 속도 계획
+double g_base_speed_mps = 7.0;
+double g_min_speed_mps = 0.8;
+double g_speed_drop_gain = 0.5;
+
+// 모터 스케일
+double g_motor_min_cmd = 0.0;
+double g_motor_max_cmd = 900.0;
+double g_motor_gain = 300.0;
+
+// PID 게인
+double g_ki_lat = 0.0;
+double g_kd_lat = 0.0;
+double g_int_sat = 0.5;
+
+// 타임아웃
+double g_dx_timeout_sec = 1.0;
+
+// 퍼블리셔
+ros::Publisher g_pub_motor;
+ros::Publisher g_pub_servo;
+
+// 내부 상태
+double g_prev_steer = 0.0;
+double g_latest_steer_cmd = 0.0;
+double g_latest_speed_cmd = 0.0;
+ros::Time g_last_cb_time;
+bool g_have_cb_time = false;
+
+// crosswalk 상태
+bool g_is_crosswalk = false;
+bool g_crosswalk_timer_running = false;
+ros::Time g_crosswalk_start_time;
+
+// 곡률 범위 파라미터
+double g_min_curv = 3e-4;
+double g_max_curv = 1.5e-3;
 
 // -------------------- 파라미터 로딩 --------------------
 void loadParams(ros::NodeHandle& pnh)
@@ -297,4 +360,54 @@ void publish_motor_commands(double steer_cmd, double speed_cmd)
   ROS_INFO_THROTTLE(0.5,
     "[lane_ctrl][pub] steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f",
     steer_cmd, servo_hw, motor_cmd, speed_cmd);
+}
+
+// -------------------- main --------------------
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "controller_lane_logic");
+  ros::NodeHandle nh;
+  ros::NodeHandle pnh("~");
+
+  ROS_INFO("[lane_ctrl_logic] start");
+  loadParams(pnh);
+
+  g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
+  g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
+
+  ros::Subscriber center_sub    = nh.subscribe(g_topic_center_point, 20, CB_center);
+  ros::Subscriber crosswalk_sub = nh.subscribe(g_is_crosswalk_topic, 10, CB_crosswalk);
+  ros::Subscriber curv_sub      = nh.subscribe(g_topic_curvature_center, 10, CB_center_curvature);
+
+  ros::Rate rate(15);
+  while (ros::ok()) {
+    ros::spinOnce();
+
+    ros::Time now = ros::Time::now();
+    bool have_dx = false;
+    if (g_have_cb_time) {
+      double dt = (now - g_last_cb_time).toSec();
+      have_dx = (dt <= g_dx_timeout_sec);
+    }
+
+    double steer_cmd = 0.0;
+    double speed_cmd = 0.0;
+
+    if (have_dx) {
+      steer_cmd = g_latest_steer_cmd;  // -1 ~ +1
+      speed_cmd = g_latest_speed_cmd;  // m/s
+    } else {
+      steer_cmd = 0.0;
+      speed_cmd = 0.0;
+      ROS_INFO_THROTTLE(1.0,
+        "[lane_ctrl_logic] waiting center_point_px ... (timeout)");
+    }
+
+    apply_crosswalk_hold(steer_cmd, speed_cmd, now);
+    publish_motor_commands(steer_cmd, speed_cmd);
+
+    rate.sleep();
+  }
+
+  return 0;
 }

@@ -46,22 +46,6 @@ include_directories(
 add_definitions(${PCL_DEFINITIONS})
 
 
-# --- gate (mission7 게이트 노드) ---
-add_executable(gate src/gate.cpp)
-target_link_libraries(gate
-  ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
-)
-
-
-add_executable(stopline_ratio
-  src/stopline_ratio.cpp
-)
-target_link_libraries(stopline_ratio
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
 add_executable(stopline_ratio_imagetest
   src/stopline_ratio_imagetest.cpp
 )

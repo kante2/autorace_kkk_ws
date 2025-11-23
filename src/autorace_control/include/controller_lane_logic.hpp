@@ -52,6 +52,11 @@ extern double g_motor_min_cmd;
 extern double g_motor_max_cmd;
 extern double g_motor_gain;
 
+// PID 게인
+extern double g_ki_lat;
+extern double g_kd_lat;
+extern double g_int_sat;
+
 // 타임아웃
 extern double g_dx_timeout_sec;
 

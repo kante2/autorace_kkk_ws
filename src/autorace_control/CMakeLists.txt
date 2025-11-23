@@ -64,11 +64,3 @@ target_compile_features(controller_lane_logic PRIVATE cxx_std_11)
 target_link_libraries(controller_lane_logic
   ${catkin_LIBRARIES}
 )
-
-add_executable(controller_obstacle_dbscan_logic
-  src/controller_obstacle_dbscan_logic.cpp
-)
-target_compile_features(controller_obstacle_dbscan_logic PRIVATE cxx_std_11)
-target_link_libraries(controller_obstacle_dbscan_logic
-  ${catkin_LIBRARIES}
-)
