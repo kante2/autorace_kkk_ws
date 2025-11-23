@@ -61,7 +61,7 @@ void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
 }
 
 // -------------------- 콜백: rotary 감지 --------------------
-void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
+void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
 {
   g_rotary_detected = msg->data;
 }
@@ -96,7 +96,7 @@ int main(int argc, char** argv)
                          topic_rotary_detected,
                          std::string("/rotary_detected"));
 
-  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s'",
+  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
            ros::names::resolve(topic_gate_detected).c_str(),
            ros::names::resolve(topic_crosswalk_detected).c_str(),

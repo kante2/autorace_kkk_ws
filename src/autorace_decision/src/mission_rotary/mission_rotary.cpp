@@ -45,6 +45,7 @@ ros::Publisher g_rotary_detected_pub;
 ros::Publisher g_motor_pub;
 ros::Publisher g_servo_pub;
 ros::Subscriber g_scan_sub;
+ros::Timer g_detection_timer;
 sensor_msgs::LaserScan::ConstPtr g_scan_msg;
 
 double g_current_speed_mps = 0.0;
@@ -57,7 +58,8 @@ inline double clamp(double x, double lo, double hi) {
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) { g_scan_msg = scan_msg; }
 
 // -------------------- 내부 처리 --------------------
-void processOnce() {
+// publish_control=false: 감지 토픽만 내고 모터/서보는 내지 않는다(미션 비활성화 시에도 감지는 계속).
+void processOnce(bool publish_control) {
   if (!g_scan_msg) {
     return;
   }
@@ -84,6 +86,10 @@ void processOnce() {
   detected_msg.data = has_close_object;
   g_rotary_detected_pub.publish(detected_msg);
 
+  if (!publish_control) {
+    return;
+  }
+
   // 감속/가속 속도 결정
   const double target_speed = has_close_object ? g_slow_speed_mps : g_cruise_speed_mps;
   if (g_current_speed_mps > target_speed) {
@@ -108,6 +114,11 @@ void processOnce() {
                     "[mission_rotary] detected=%d target_v=%.2f cur_v=%.2f motor=%.1f servo=%.2f",
                     static_cast<int>(has_close_object), target_speed, g_current_speed_mps, motor_cmd,
                     servo_cmd);
+}
+
+void detectionTimerCb(const ros::TimerEvent &) {
+  // 미션 활성 여부와 무관하게 감지 상태를 주기적으로 퍼블리시
+  processOnce(false);
 }
 }  // namespace
 
@@ -154,6 +165,7 @@ void mission_rotary_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
   g_motor_pub = nh.advertise<std_msgs::Float64>(g_topic_motor, 10);
   g_servo_pub = nh.advertise<std_msgs::Float64>(g_topic_servo, 10);
   g_scan_sub = nh.subscribe(g_topic_scan, 1, scanCallback);
+  g_detection_timer = nh.createTimer(ros::Duration(1.0 / 30.0), detectionTimerCb);
 
   g_scan_msg.reset();
   g_current_speed_mps = g_cruise_speed_mps;
@@ -163,5 +175,5 @@ void mission_rotary_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
 
 // main loop에서 호출
 void mission_rotary_step() {
-  processOnce();
+  processOnce(true);
 }

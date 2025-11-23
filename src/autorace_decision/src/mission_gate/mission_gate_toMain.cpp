@@ -7,6 +7,7 @@
 #include <geometry_msgs/Point.h>
 #include <visualization_msgs/Marker.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Bool.h>
 #include <laser_geometry/laser_geometry.h>
 
 #include <vector>
@@ -38,6 +39,8 @@ static ros::Subscriber g_sub_scan;
 static ros::Publisher  g_marker_pub;
 static ros::Publisher  g_pub_cloud;
 static ros::Publisher  g_pub_speed;
+static ros::Publisher  g_pub_gate_detected;
+static ros::Timer      g_detect_timer;
 static laser_geometry::LaserProjection g_projector;
 
 // 토픽 이름
@@ -45,6 +48,7 @@ static std::string g_scan_topic;
 static std::string g_motor_topic;
 static std::string g_cloud_topic;
 static std::string g_marker_topic;
+static std::string g_gate_detected_topic;
 
 // ===== 전역 파라미터 =====
 static double g_eps            = 0.2;    // 클러스터 간 거리 [m]
@@ -68,6 +72,24 @@ static ros::Time g_last_scan_time;
 static bool      g_gate_down_final = false;
 static double    g_gate_dist       = std::numeric_limits<double>::infinity();
 static bool      g_have_gate_state = false;
+
+// -------------------- 감지 토픽 퍼블리시 --------------------
+static void publishGateDetected(const ros::TimerEvent&)
+{
+    ros::Time now = ros::Time::now();
+    bool have_scan = false;
+    if (g_have_scan_time)
+    {
+        double dt = (now - g_last_scan_time).toSec();
+        have_scan = (dt <= g_scan_timeout_sec);
+    }
+
+    bool detected = have_scan && g_have_gate_state && g_gate_down_final;
+
+    std_msgs::Bool msg;
+    msg.data = detected;
+    g_pub_gate_detected.publish(msg);
+}
 
 // ================== 유틸 함수 ==================
 static inline double clamp(double x, double lo, double hi)
@@ -463,13 +485,15 @@ void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
     pnh.param<std::string>("motor_topic",  g_motor_topic,  std::string("/commands/motor/speed"));
     pnh.param<std::string>("cloud_topic",  g_cloud_topic,  std::string("/scan_points"));
     pnh.param<std::string>("marker_topic", g_marker_topic, std::string("/gate_cluster_marker"));
+    pnh.param<std::string>("gate_detected_topic", g_gate_detected_topic, std::string("/gate_detected"));
 
     ROS_INFO("[mission_gate] subscribe scan='%s'",
              ros::names::resolve(g_scan_topic).c_str());
-    ROS_INFO("[mission_gate] publish motor='%s', cloud='%s', marker='%s'",
+    ROS_INFO("[mission_gate] publish motor='%s', cloud='%s', marker='%s', gate_detected='%s'",
              ros::names::resolve(g_motor_topic).c_str(),
              ros::names::resolve(g_cloud_topic).c_str(),
-             ros::names::resolve(g_marker_topic).c_str());
+             ros::names::resolve(g_marker_topic).c_str(),
+             ros::names::resolve(g_gate_detected_topic).c_str());
 
     // Pub/Sub
     g_sub_scan   = nh.subscribe<sensor_msgs::LaserScan>(
@@ -480,6 +504,9 @@ void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
         g_motor_topic, 1);
     g_marker_pub = nh.advertise<visualization_msgs::Marker>(
         g_marker_topic, 1);
+    g_pub_gate_detected = nh.advertise<std_msgs::Bool>(
+        g_gate_detected_topic, 1);
+    g_detect_timer = nh.createTimer(ros::Duration(1.0 / 30.0), publishGateDetected);
 
     // 상태 초기화
     g_gate_down_count  = 0;
