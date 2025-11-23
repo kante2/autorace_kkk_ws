@@ -15,6 +15,7 @@
   <build_depend>morai_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>roscpp</build_depend>
+  <build_depend>sensor_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
@@ -25,12 +26,16 @@
   <build_depend>autorace_control</build_depend>
   <build_depend>rosbag</build_depend>
   <build_depend>laser_geometry</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>opencv2</build_depend>
 
   <!-- build_export_depend -->
   <build_export_depend>geometry_msgs</build_export_depend>
   <build_export_depend>morai_msgs</build_export_depend>
   <build_export_depend>nav_msgs</build_export_depend>
   <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
   <build_export_depend>tf2</build_export_depend>
   <build_export_depend>tf2_geometry_msgs</build_export_depend>
@@ -41,12 +46,16 @@
   <build_export_depend>autorace_control</build_export_depend>
   <build_export_depend>rosbag</build_export_depend>
   <build_export_depend>laser_geometry</build_export_depend>
+  <build_export_depend>image_transport</build_export_depend>
+  <build_export_depend>cv_bridge</build_export_depend>
+  <build_export_depend>opencv2</build_export_depend>
 
   <!-- exec_depend -->
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>morai_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>roscpp</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>tf2</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
@@ -57,6 +66,9 @@
   <exec_depend>autorace_control</exec_depend>
   <exec_depend>rosbag</exec_depend>
   <exec_depend>laser_geometry</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>opencv2</exec_depend>
 
   <export>
   </export>

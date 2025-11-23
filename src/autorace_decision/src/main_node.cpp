@@ -16,7 +16,7 @@ void mission_labacorn_step();
 void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_gate_step();
 
-// mission_crosswalk_toMain.cpp
+// mission_crosswalk.cpp
 void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_crosswalk_step();
 

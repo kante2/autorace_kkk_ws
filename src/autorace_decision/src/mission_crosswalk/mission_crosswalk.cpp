@@ -1,12 +1,16 @@
-// mission_crosswalk_toMain.cpp
+// mission_crosswalk.cpp
+// 횡단보도 미션: 감지 신호가 들어온 뒤 정지/직진 시퀀스 실행
+
+#include <cmath>
+#include <string>
+
 #include <ros/ros.h>
 #include <std_msgs/Float64.h>
-#include <string>
-#include <cmath>
 
-// -------------------- 유틸 --------------------
-inline double clamp(double x, double lo, double hi)
-{
+// 감지 로직 포함 (standalone main 없음)
+#include "crosswalk_detect.cpp"
+
+inline double clamp(double x, double lo, double hi) {
   return (x < lo) ? lo : (x > hi) ? hi : x;
 }
 
@@ -17,32 +21,31 @@ static std::string g_servo_topic;
 
 // 서보 스케일
 static double g_servo_center = 0.5;
-static double g_servo_min    = 0.0;
-static double g_servo_max    = 1.0;
-static double g_steer_sign   = -1.0;
+static double g_servo_min = 0.0;
+static double g_servo_max = 1.0;
+static double g_steer_sign = -1.0;
 
 // 속도/모터 스케일
-static double g_go_speed_mps   = 2.0;   // 횡단보도 통과할 때 직진 속도
-static double g_motor_min_cmd  = 0.0;
-static double g_motor_max_cmd  = 900.0;
-static double g_motor_gain     = 300.0;
+static double g_go_speed_mps = 2.0;  // 횡단보도 통과할 때 직진 속도
+static double g_motor_min_cmd = 0.0;
+static double g_motor_max_cmd = 900.0;
+static double g_motor_gain = 300.0;
 
 // 타이밍 (초)
 static double g_stop_duration_sec = 7.0;  // 정지 시간
-static double g_go_duration_sec   = 2.0;  // 직진 시간 (추가)
+static double g_go_duration_sec = 2.0;    // 직진 시간 (추가)
 
 // 퍼블리셔
 static ros::Publisher g_pub_motor;
 static ros::Publisher g_pub_servo;
 
 // 내부 타이머 상태
-static bool      g_crosswalk_running = false;
+static bool g_crosswalk_running = false;
 static ros::Time g_crosswalk_start_time;
 static ros::Time g_last_step_time;
 
 // -------------------- 초기화 함수 --------------------
-void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
-{
+void mission_crosswalk_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
   ROS_INFO("[crosswalk] mission_crosswalk_init()");
 
   // --- 파라미터 로드 ---
@@ -53,19 +56,19 @@ void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   // 서보 스케일 (lane 미션과 동일하게 사용)
   pnh.param<double>("servo_center", g_servo_center, 0.5);
-  pnh.param<double>("servo_min",    g_servo_min,    0.0);
-  pnh.param<double>("servo_max",    g_servo_max,    1.0);
-  pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
+  pnh.param<double>("servo_min", g_servo_min, 0.0);
+  pnh.param<double>("servo_max", g_servo_max, 1.0);
+  pnh.param<double>("steer_sign", g_steer_sign, -1.0);
 
   // 속도/모터 스케일
-  pnh.param<double>("crosswalk_go_speed_mps", g_go_speed_mps, 2.0);   // 2 m/s 기본
+  pnh.param<double>("crosswalk_go_speed_mps", g_go_speed_mps, 2.0);  // 2 m/s 기본
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
   pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 900.0);
-  pnh.param<double>("motor_gain",    g_motor_gain,    300.0);
+  pnh.param<double>("motor_gain", g_motor_gain, 300.0);
 
   // 타이밍
   pnh.param<double>("crosswalk_stop_duration_sec", g_stop_duration_sec, 7.0);
-  pnh.param<double>("crosswalk_go_duration_sec",   g_go_duration_sec,   2.0);
+  pnh.param<double>("crosswalk_go_duration_sec", g_go_duration_sec, 2.0);
 
   ROS_INFO("[crosswalk] publish motor='%s', servo='%s'",
            ros::names::resolve(g_motor_topic).c_str(),
@@ -80,21 +83,21 @@ void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   g_crosswalk_running = false;
   g_last_step_time = ros::Time(0);
 
+  // 횡단보도 감지 노드 초기화 (항상 동작, main_node로 감지 토픽 전달)
+  crosswalk_detect_init(nh, pnh);
+
   ROS_INFO("[crosswalk] mission_crosswalk_init done");
 }
 
 // -------------------- 한 스텝 실행 --------------------
-void mission_crosswalk_step()
-{
+void mission_crosswalk_step() {
   ros::Time now = ros::Time::now();
 
   // --- 상태 전환(재진입) 감지용: 오래 쉬었다가 다시 들어오면 리셋 ---
-  if (!g_last_step_time.isZero())
-  {
+  if (!g_last_step_time.isZero()) {
     double gap = (now - g_last_step_time).toSec();
     // 예: 0.5초 이상 호출이 끊겼다가 다시 오면 새 미션으로 판단
-    if (gap > 0.5)
-    {
+    if (gap > 0.5) {
       g_crosswalk_running = false;
       ROS_INFO("[crosswalk] re-entered mission -> reset timer");
     }
@@ -102,12 +105,11 @@ void mission_crosswalk_step()
   g_last_step_time = now;
 
   // --- 처음 진입 시 타이머 시작 ---
-  if (!g_crosswalk_running)
-  {
-    g_crosswalk_running   = true;
+  if (!g_crosswalk_running) {
+    g_crosswalk_running = true;
     g_crosswalk_start_time = now;
-    ROS_INFO("[crosswalk] START: stop %.1fs + go %.1fs",
-             g_stop_duration_sec, g_go_duration_sec);
+    ROS_INFO("[crosswalk] START: stop %.1fs + go %.1fs", g_stop_duration_sec,
+             g_go_duration_sec);
   }
 
   double elapsed = (now - g_crosswalk_start_time).toSec();
@@ -120,36 +122,29 @@ void mission_crosswalk_step()
   // stop_duration ~ stop+go      : 직진
   // 그 이후                   : 계속 직진 유지
   // ==============================
-  if (elapsed < g_stop_duration_sec)
-  {
+  if (elapsed < g_stop_duration_sec) {
     // 정지
     steer_cmd = 0.0;
     speed_cmd = 0.0;
 
-    ROS_INFO_THROTTLE(1.0,
-      "[crosswalk] STOP PHASE (t=%.2f/%.2f)", elapsed, g_stop_duration_sec);
-  }
-  else if (elapsed < g_stop_duration_sec + g_go_duration_sec)
-  {
+    ROS_INFO_THROTTLE(1.0, "[crosswalk] STOP PHASE (t=%.2f/%.2f)", elapsed,
+                      g_stop_duration_sec);
+  } else if (elapsed < g_stop_duration_sec + g_go_duration_sec) {
     // 직진 2초
     steer_cmd = 0.0;
     speed_cmd = g_go_speed_mps;
 
-    ROS_INFO_THROTTLE(1.0,
-      "[crosswalk] GO PHASE (t=%.2f, %.2f~%.2f)",
-      elapsed,
-      g_stop_duration_sec,
-      g_stop_duration_sec + g_go_duration_sec);
-  }
-  else
-  {
+    ROS_INFO_THROTTLE(1.0, "[crosswalk] GO PHASE (t=%.2f, %.2f~%.2f)", elapsed,
+                      g_stop_duration_sec, g_stop_duration_sec + g_go_duration_sec);
+  } else {
     // 미션 시간 끝난 후: 계속 직진 유지
     steer_cmd = 0.0;
     speed_cmd = g_go_speed_mps;
 
     ROS_INFO_THROTTLE(2.0,
-      "[crosswalk] DONE (elapsed=%.2f) -> keep going straight until main switches mission",
-      elapsed);
+                      "[crosswalk] DONE (elapsed=%.2f) -> keep going straight until "
+                      "main switches mission",
+                      elapsed);
   }
 
   // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
@@ -159,8 +154,7 @@ void mission_crosswalk_step()
   steer_norm *= (-g_steer_sign);
 
   // 0.5 = 직진, ±servo_range 안에서 사용
-  double servo_range = std::min(g_servo_center - g_servo_min,
-                                g_servo_max - g_servo_center);
+  double servo_range = std::min(g_servo_center - g_servo_min, g_servo_max - g_servo_center);
   double servo_hw = g_servo_center + steer_norm * servo_range;
   servo_hw = clamp(servo_hw, g_servo_min, g_servo_max);
 
@@ -178,6 +172,6 @@ void mission_crosswalk_step()
   g_pub_servo.publish(servo_msg);
 
   ROS_INFO_THROTTLE(0.5,
-    "[crosswalk][loop] t=%.2f steer=%.3f servo=%.3f motor=%.1f v=%.2f",
-    elapsed, steer_cmd, servo_hw, motor_cmd, speed_cmd);
+                    "[crosswalk][loop] t=%.2f steer=%.3f servo=%.3f motor=%.1f v=%.2f",
+                    elapsed, steer_cmd, servo_hw, motor_cmd, speed_cmd);
 }
