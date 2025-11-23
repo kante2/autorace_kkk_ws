@@ -1,0 +1,21 @@
+<launch>
+  <arg name="show_window" default="true"/>
+
+  <!-- BEV + Binary 생성 노드 -->
+  <node pkg="stopline" type="bev_binary" name="bev_binary" output="screen">
+    <param name="cam_image_topic" value="/usb_cam/image_rect_color" />
+    <param name="cam_info_topic"  value="/usb_cam/camera_info" />
+    <!--param name="show_window" value="$(arg show_window)"/-->
+  </node>
+
+  <!-- 정지선: white ratio 기반 노드 -->
+  <node pkg="stopline" type="stopline_ratio" name="stopline_ratio" output="screen">
+    <param name="image_topic" value="/stopline/bev_binary"/>
+    <param name="show_window" value="$(arg show_window)"/>
+
+    <!-- white ratio threshold (0~1, 예: 0.1 = 10%) -->
+    <param name="white_ratio_threshold" value="0.01"/>
+    <!-- 정지 유지 시간 (초) -->
+    <param name="stop_duration" value="7.0"/>
+  </node>
+</launch>

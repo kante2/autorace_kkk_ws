@@ -1,0 +1,12 @@
+<launch>
+  <!-- 차선 중심 제어 노드 -->
+  <node pkg="autorace_decision"
+        type="controller_obstacle_dbscan_logic"
+        name="mission_labacorn"
+        output="screen">
+
+    <!-- 이 노드의 private 파라미터(~)로 YAML 로드 -->
+    <rosparam command="load"
+              file="$(find autorace_control)/config/controller_obstacle_dbscan_logic.yaml" />
+  </node>
+</launch>
