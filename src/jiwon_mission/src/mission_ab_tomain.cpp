@@ -25,7 +25,7 @@ static double g_steer_sign   = -1.0;
 // 속도/모터 스케일
 static double g_turn_speed_mps = 2.0;   // 회전하면서 전진 속도
 static double g_motor_min_cmd  = 0.0;
-static double g_motor_max_cmd  = 1100.0;
+static double g_motor_max_cmd  = 1000.0;
 static double g_motor_gain     = 300.0;
 
 // 회전 관련 파라미터
