@@ -1,82 +1,52 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import cv2
+import glob
 import os
 from ultralytics import YOLO
 
+model = YOLO("/root/autorace_kkk_ws/src/yolo/best.pt")
 
-# ===== 설정 =====
-# YOLO weight 경로 (필요하면 여기 best.pt로 바꿔도 됨)
-WEIGHT_PATH = "yolov8n.pt"   # 또는 "/root/autorace_kkk_ws/src/yolo/best.pt"
+image_dir = "/root/autorace_kkk_ws/src/jiwon_mission/data"
+image_paths = ["/root/autorace_kkk_ws/src/jiwon_mission/data/right_new_30.png"]
 
-# 테스트할 이미지 경로
-IMAGE_PATH = "/root/autorace_kkk_ws/src/yolo/autorace_left.jpg"
+if not image_paths:
+    raise SystemExit("이미지를 찾지 못했습니다. 경로를 확인해 주세요.")
+else:
+    print(f"Found {len(image_paths)} image(s).")
 
-# confidence threshold
-CONF_THRES = 0.5
+# 창 크기 조절 가능하게
+cv2.namedWindow("YOLO result", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("YOLO result", 800, 600)   # 원하는 크기로
 
-
-def main():
-    # 이미지 존재 여부 확인
-    if not os.path.exists(IMAGE_PATH):
-        print("[ERROR] 이미지 파일을 찾을 수 없습니다:", IMAGE_PATH)
-        return
-
-    # 이미지 읽기
-    img = cv2.imread(IMAGE_PATH)
+for img_path in image_paths:
+    img = cv2.imread(img_path)
     if img is None:
-        print("[ERROR] cv2.imread 실패:", IMAGE_PATH)
-        return
+        print(f"[WARN] 이미지 로드 실패: {img_path}")
+        continue
 
-    print("[INFO] 이미지 로드 완료:", IMAGE_PATH)
-    print("[INFO] YOLO 모델 로딩 중:", WEIGHT_PATH)
+    results = model(img, conf=0.5)[0]
 
-    # YOLO 모델 로드
-    model = YOLO(WEIGHT_PATH)
+    for box in results.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+        cls_id = int(box.cls)
+        conf = float(box.conf)
+        cls_name = model.names[cls_id] if model.names else str(cls_id)
 
-    # 추론
-    results = model(img, conf=CONF_THRES, verbose=False)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        label = f"{cls_name} {conf:.2f}"
+        cv2.putText(img, label, (x1, max(y1 - 5, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-    # 결과 그리기
-    if len(results) > 0:
-        r = results[0]
+    # <- 여기서 화면용으로만 축소해서 보여주기
+    h, w = img.shape[:2]
+    scale = 0.5  # 0.5면 가로/세로 모두 절반
+    display = cv2.resize(img, (int(w * scale), int(h * scale)))
 
-        if r.boxes is not None and len(r.boxes) > 0:
-            boxes = r.boxes.xyxy.cpu().numpy()
-            scores = r.boxes.conf.cpu().numpy()
-            class_ids = r.boxes.cls.cpu().numpy().astype(int)
+    window_name = os.path.basename(img_path)
+    cv2.imshow("YOLO result", display)
 
-            names = model.names if hasattr(model, "names") else None
-
-            for box, score, cls_id in zip(boxes, scores, class_ids):
-                x1, y1, x2, y2 = box.astype(int)
-
-                label = str(cls_id)
-                if names is not None and cls_id in names:
-                    label = names[cls_id]
-
-                text = "{} {:.2f}".format(label, float(score))
-
-                # 박스 & 텍스트 그리기
-                cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                cv2.putText(
-                    img,
-                    text,
-                    (x1, max(y1 - 5, 0)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (255, 0, 0),
-                    2,
-                )
-
-    # 결과 창 띄우기
-    cv2.namedWindow("yolo_result", cv2.WINDOW_NORMAL)
-    cv2.imshow("yolo_result", img)
-    print("[INFO] 아무 키나 누르면 창이 닫힙니다.")
-    cv2.waitKey(0)
+    key = cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
-if __name__ == "__main__":
-    main()
+cv2.destroyAllWindows()
