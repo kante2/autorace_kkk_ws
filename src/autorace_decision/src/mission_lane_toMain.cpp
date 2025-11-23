@@ -1,9 +1,8 @@
-// mission_lane.cpp
+// mission_lane_toMain.cpp
 #include <ros/ros.h>
 #include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/PointStamped.h>
-#include <std_msgs/Bool.h>
 
 #include <cmath>
 #include <string>
@@ -15,73 +14,64 @@ inline double clamp(double x, double lo, double hi)
 }
 
 // -------------------- 전역 상태 --------------------
-// [MOD-static] : 이 파일 안에서만 쓰는 전역은 static 붙여서
-//               다른 mission_*.cpp 와 이름이 겹쳐도 링크 에러 안 나게 함.
 
 // 토픽 이름들
-static std::string g_topic_center_point;        // [MOD-static]
-static std::string g_topic_dx_px;              // 참고용(실제 구독 X) [MOD-static]
-static std::string g_motor_topic;              // [MOD-static]
-static std::string g_servo_topic;              // [MOD-static]
-static std::string g_is_crosswalk_topic;       // [MOD-static]
-static std::string g_topic_curvature_center;   // [MOD-static]
+static std::string g_topic_center_point;
+static std::string g_topic_dx_px;            // 참고용 (구독 안 함)
+static std::string g_motor_topic;
+static std::string g_servo_topic;
+static std::string g_topic_curvature_center;
 
 // BEV 중심 x 픽셀
-static double g_bev_center_x_px = 320.0;       // [MOD-static]
+static double g_bev_center_x_px = 320.0;
 
 // 서보 스케일
-static double g_servo_center = 0.5;            // [MOD-static]
-static double g_servo_min    = 0.0;            // [MOD-static]
-static double g_servo_max    = 1.0;            // [MOD-static]
-static double g_steer_sign   = -1.0;           // [MOD-static]
+static double g_servo_center = 0.5;
+static double g_servo_min    = 0.0;
+static double g_servo_max    = 1.0;
+static double g_steer_sign   = -1.0;
 
 // Control 파라미터
-static double g_max_abs_dx_px = 83.0;          // [MOD-static]
-static double g_dx_tolerance  = 3.0;           // [MOD-static]
-static double g_steer_gain    = 1.5;           // [MOD-static]
-static double g_alpha_ema     = 0.2;           // [MOD-static]
-static double g_max_delta     = 0.08;          // [MOD-static]
+static double g_max_abs_dx_px = 83.0;
+static double g_dx_tolerance  = 3.0;
+static double g_steer_gain    = 1.5;
+static double g_alpha_ema     = 0.2;
+static double g_max_delta     = 0.08;
 
 // 속도 계획
-static double g_base_speed_mps  = 7.0;         // [MOD-static]
-static double g_min_speed_mps   = 0.8;         // [MOD-static]
-static double g_speed_drop_gain = 0.5;         // [MOD-static]
+static double g_base_speed_mps  = 7.0;
+static double g_min_speed_mps   = 0.8;
+static double g_speed_drop_gain = 0.5;
 
 // 모터 스케일
-static double g_motor_min_cmd = 0.0;           // [MOD-static]
-static double g_motor_max_cmd = 900.0;         // [MOD-static]
-static double g_motor_gain    = 300.0;         // [MOD-static]
+static double g_motor_min_cmd = 0.0;
+static double g_motor_max_cmd = 900.0;
+static double g_motor_gain    = 300.0;
 
 // 타임아웃
-static double g_dx_timeout_sec = 1.0;          // [MOD-static]
+static double g_dx_timeout_sec = 1.0;
 
 // 퍼블리셔
-static ros::Publisher g_pub_motor;             // [MOD-static]
-static ros::Publisher g_pub_servo;             // [MOD-static]
+static ros::Publisher g_pub_motor;
+static ros::Publisher g_pub_servo;
 
-// 서브스크라이버 (init 안에서 초기화)
-static ros::Subscriber g_center_sub;           // [MOD-static]
-static ros::Subscriber g_crosswalk_sub;        // [MOD-static]
-static ros::Subscriber g_curvature_sub;        // [MOD-static]
+// 서브스크라이버
+static ros::Subscriber g_center_sub;
+static ros::Subscriber g_curvature_sub;
 
 // 내부 상태
-static double g_prev_steer        = 0.0;       // [MOD-static]
-static double g_latest_steer_cmd  = 0.0;       // [MOD-static]
-static double g_latest_speed_cmd  = 0.0;       // [MOD-static]
-static ros::Time g_last_cb_time;               // [MOD-static]
-static bool g_have_cb_time = false;            // [MOD-static]
-
-// crosswalk 상태
-static bool      g_is_crosswalk            = false;   // [MOD-static]
-static bool      g_crosswalk_timer_running = false;   // [MOD-static]
-static ros::Time g_crosswalk_start_time;              // [MOD-static]
+static double   g_prev_steer       = 0.0;
+static double   g_latest_steer_cmd = 0.0;
+static double   g_latest_speed_cmd = 0.0;
+static ros::Time g_last_cb_time;
+static bool      g_have_cb_time    = false;
 
 // 곡률 범위 파라미터
-static double g_min_curv = 3e-4;              // [MOD-static]
-static double g_max_curv = 1.5e-3;            // [MOD-static]
+static double g_min_curv = 3e-4;
+static double g_max_curv = 1.5e-3;
 
 // -------------------- dx 처리 로직 --------------------
-static void processDx(double dx)               // [MOD-static] 이 파일 안에서만 쓰는 함수
+static void processDx(double dx)
 {
   double err_norm = 0.0;
 
@@ -107,7 +97,7 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
                            g_min_speed_mps, g_base_speed_mps);
 
   g_latest_steer_cmd = steer_cmd;   // -1 ~ +1
-  g_latest_speed_cmd = speed_cmd;   // m/s 개념
+  g_latest_speed_cmd = speed_cmd;   // m/s
 
   ROS_INFO_THROTTLE(0.5,
     "[lane_ctrl][CB] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f (steer_gain=%.3f)",
@@ -115,9 +105,8 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
 }
 
 // -------------------- 콜백: center_point_px --------------------
-static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg) // [MOD-static]
+static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
 {
-  // 타임아웃 체크용 시간 저장
   g_last_cb_time = ros::Time::now();
   g_have_cb_time = true;
 
@@ -127,14 +116,8 @@ static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg) // [MOD-s
   processDx(dx);
 }
 
-// -------------------- 콜백: is_crosswalk --------------------
-static void crosswalkCB(const std_msgs::Bool::ConstPtr& msg)          // [MOD-static]
-{
-  g_is_crosswalk = msg->data;
-}
-
 // -------------------- 콜백: curvature_center --------------------
-static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg) // [MOD-static]
+static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg)
 {
   double center_curv = msg->data;
 
@@ -162,7 +145,6 @@ static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg) // [MOD-st
     center_curv, g_min_curv, g_max_curv, g_steer_gain);
 }
 
-
 // =====================================================
 // ★ main_node.cpp 에서 부를 함수들 ★
 // =====================================================
@@ -185,11 +167,6 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<std::string>("servo_topic", g_servo_topic,
                          std::string("/commands/servo/position"));
 
-  // is_crosswalk topic
-  pnh.param<std::string>("is_crosswalk_topic",
-                         g_is_crosswalk_topic,
-                         std::string("/perception/is_crosswalk"));
-
   // curvature_center topic
   pnh.param<std::string>("topic_curvature_center",
                          g_topic_curvature_center,
@@ -197,8 +174,6 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   ROS_INFO("[lane_ctrl] subscribe center='%s'",
            ros::names::resolve(g_topic_center_point).c_str());
-  ROS_INFO("[lane_ctrl] subscribe is_crosswalk='%s'",
-           ros::names::resolve(g_is_crosswalk_topic).c_str());
   ROS_INFO("[lane_ctrl] subscribe curvature_center='%s'",
            ros::names::resolve(g_topic_curvature_center).c_str());
   ROS_INFO("[lane_ctrl] publish motor='%s', servo='%s'",
@@ -215,9 +190,9 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
   // Control params
-  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 83.0); // 83,
+  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 83.0);
   pnh.param<double>("dx_tolerance",  g_dx_tolerance,  3.0);
-  pnh.param<double>("steer_gain",    g_steer_gain,    1.5); // 초기 steer_gain
+  pnh.param<double>("steer_gain",    g_steer_gain,    1.5);
   pnh.param<double>("steer_smoothing_alpha", g_alpha_ema, 0.2);
   pnh.param<double>("max_steer_delta_per_cycle", g_max_delta, 0.08);
 
@@ -240,7 +215,6 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   // --- Pub/Sub ---
   g_center_sub    = nh.subscribe(g_topic_center_point,     20, centerCB);
-  g_crosswalk_sub = nh.subscribe(g_is_crosswalk_topic,     10, crosswalkCB);
   g_curvature_sub = nh.subscribe(g_topic_curvature_center, 10, curvatureCenterCB);
 
   g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
@@ -272,28 +246,6 @@ void mission_lane_step()
     ROS_INFO_THROTTLE(1.0,
       "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
   }
-
-  // ---------------- is_crosswalk 처리 (7초 정지) ----------------
-  if (g_is_crosswalk && !g_crosswalk_timer_running) {
-    g_crosswalk_timer_running = true;
-    g_crosswalk_start_time    = now;
-    ROS_INFO("[lane_ctrl] is_crosswalk TRUE: start 7s hold");
-  }
-
-  if (g_crosswalk_timer_running) {
-    double dt = (now - g_crosswalk_start_time).toSec();
-    if (dt < 7.0) {
-      steer_cmd = 0.0;   // 정지 상태
-      speed_cmd = 0.0;
-
-      ROS_INFO_THROTTLE(1.0,
-        "[lane_ctrl] is_crosswalk: HOLD (t=%.2f/7.0)", dt);
-    } else {
-      g_crosswalk_timer_running = false;
-      ROS_INFO("[lane_ctrl] is_crosswalk: 7s hold finished");
-    }
-  }
-  // -------------------------------------------------------------
 
   // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
   double steer_norm = clamp(steer_cmd, -1.0, 1.0);

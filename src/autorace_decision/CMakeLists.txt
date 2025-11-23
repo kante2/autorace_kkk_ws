@@ -35,20 +35,12 @@ include_directories(
 # ★ main_node 안에 미션 소스들 전부 포함
 add_executable(main_node
   src/main_node.cpp
-  src/main_node.cpp
   src/mission_lane_toMain.cpp
   src/mission_labacorn_toMain.cpp
-  src/mission_gate_toMain.cpp
-  src/mission_color_toMain.cpp
-  # ----------
-  src/mission_lane.cpp
-  src/mission_labacorn.cpp
-  src/mission_gate.cpp
-  # 필요하면 나중에 이런 것도 추가 가능
-  # src/mission_parking.cpp
-  # src/mission_rotary.cpp
-  # src/mission_AB.cpp
-  # ...
+  src/mission_crosswalk_toMain.cpp
+  src/mission_gate/mission_gate_toMain.cpp
+  src/mission_AB_toMain.cpp
+  src/mission_rotary/mission_rotary.cpp
 )
 
 target_compile_features(main_node PRIVATE cxx_std_11)
@@ -59,5 +51,22 @@ add_dependencies(main_node
 )
 
 target_link_libraries(main_node
+  ${catkin_LIBRARIES}
+)
+
+# 디버그용 rotary 단독 노드
+add_executable(rotary_main
+  src/mission_rotary/rotary_main.cpp
+  src/mission_rotary/mission_rotary.cpp
+)
+
+target_compile_features(rotary_main PRIVATE cxx_std_11)
+
+add_dependencies(rotary_main
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(rotary_main
   ${catkin_LIBRARIES}
 )

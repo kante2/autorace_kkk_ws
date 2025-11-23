@@ -29,7 +29,7 @@ static double g_motor_gain     = 300.0;
 
 // 타이밍 (초)
 static double g_stop_duration_sec = 7.0;  // 정지 시간
-static double g_go_duration_sec   = 2.0;  // 직진 시간 (추가)
+static double g_go_duration_sec   = 2.0;  // 직진 시간
 
 // 퍼블리셔
 static ros::Publisher g_pub_motor;
@@ -58,7 +58,7 @@ void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
   // 속도/모터 스케일
-  pnh.param<double>("crosswalk_go_speed_mps", g_go_speed_mps, 2.0);   // 2 m/s 기본
+  pnh.param<double>("crosswalk_go_speed_mps", g_go_speed_mps, 2.0);
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
   pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 900.0);
   pnh.param<double>("motor_gain",    g_motor_gain,    300.0);
@@ -78,7 +78,7 @@ void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
 
   g_crosswalk_running = false;
-  g_last_step_time = ros::Time(0);
+  g_last_step_time    = ros::Time(0);
 
   ROS_INFO("[crosswalk] mission_crosswalk_init done");
 }
@@ -88,12 +88,11 @@ void mission_crosswalk_step()
 {
   ros::Time now = ros::Time::now();
 
-  // --- 상태 전환(재진입) 감지용: 오래 쉬었다가 다시 들어오면 리셋 ---
+  // 오래 쉬었다가 다시 들어오면 리셋
   if (!g_last_step_time.isZero())
   {
     double gap = (now - g_last_step_time).toSec();
-    // 예: 0.5초 이상 호출이 끊겼다가 다시 오면 새 미션으로 판단
-    if (gap > 0.5)
+    if (gap > 0.5)  // 예: 0.5초 이상 호출 끊겼으면 새 미션으로 판단
     {
       g_crosswalk_running = false;
       ROS_INFO("[crosswalk] re-entered mission -> reset timer");
@@ -101,10 +100,10 @@ void mission_crosswalk_step()
   }
   g_last_step_time = now;
 
-  // --- 처음 진입 시 타이머 시작 ---
+  // 처음 진입 시 타이머 시작
   if (!g_crosswalk_running)
   {
-    g_crosswalk_running   = true;
+    g_crosswalk_running    = true;
     g_crosswalk_start_time = now;
     ROS_INFO("[crosswalk] START: stop %.1fs + go %.1fs",
              g_stop_duration_sec, g_go_duration_sec);
@@ -112,29 +111,25 @@ void mission_crosswalk_step()
 
   double elapsed = (now - g_crosswalk_start_time).toSec();
 
-  double steer_cmd = 0.0;  // 항상 직진
-  double speed_cmd = 0.0;  // 아래에서 단계별로 설정
+  double steer_cmd = 0.0;  // 직진
+  double speed_cmd = 0.0;  // 아래 단계별 설정
 
   // ==============================
-  // 0 ~ stop_duration : 정지
-  // stop_duration ~ stop+go      : 직진
-  // 그 이후                   : 계속 직진 유지
+  // 0 ~ stop_duration      : 정지
+  // stop_duration ~ stop+go : 직진
+  // 그 이후                : 계속 직진 유지
   // ==============================
   if (elapsed < g_stop_duration_sec)
   {
-    // 정지
     steer_cmd = 0.0;
     speed_cmd = 0.0;
-
     ROS_INFO_THROTTLE(1.0,
       "[crosswalk] STOP PHASE (t=%.2f/%.2f)", elapsed, g_stop_duration_sec);
   }
   else if (elapsed < g_stop_duration_sec + g_go_duration_sec)
   {
-    // 직진 2초
     steer_cmd = 0.0;
     speed_cmd = g_go_speed_mps;
-
     ROS_INFO_THROTTLE(1.0,
       "[crosswalk] GO PHASE (t=%.2f, %.2f~%.2f)",
       elapsed,
@@ -143,10 +138,8 @@ void mission_crosswalk_step()
   }
   else
   {
-    // 미션 시간 끝난 후: 계속 직진 유지
     steer_cmd = 0.0;
     speed_cmd = g_go_speed_mps;
-
     ROS_INFO_THROTTLE(2.0,
       "[crosswalk] DONE (elapsed=%.2f) -> keep going straight until main switches mission",
       elapsed);
@@ -158,7 +151,6 @@ void mission_crosswalk_step()
   // 방향 뒤집기(차에 맞게)
   steer_norm *= (-g_steer_sign);
 
-  // 0.5 = 직진, ±servo_range 안에서 사용
   double servo_range = std::min(g_servo_center - g_servo_min,
                                 g_servo_max - g_servo_center);
   double servo_hw = g_servo_center + steer_norm * servo_range;

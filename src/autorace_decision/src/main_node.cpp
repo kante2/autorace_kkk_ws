@@ -20,21 +20,37 @@ void mission_gate_step();
 void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_crosswalk_step();
 
+// mission_rotary.cpp
+void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+void mission_rotary_step();
+
+// mission_AB_toMain.cpp (YOLO 좌/우 표지판 회전 미션)
+void mission_AB_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+// dir: -1 = LEFT, +1 = RIGHT, 0 = NONE
+void mission_AB_step(int turn_dir);
+
 // -------------------- 미션 상태 enum --------------------
 enum MissionState
 {
   MISSION_LANE = 0,
   MISSION_LABACORN,
   MISSION_GATE,
-  MISSION_CROSSWALK
+  MISSION_CROSSWALK,
+  MISSION_ROTARY,
+  MISSION_TURNSIGN   // YOLO 좌/우 표지판
 };
 
 MissionState g_current_state = MISSION_LANE;
 
-// 감지 토픽 상태
+// -------------------- 감지 토픽 상태 플래그 --------------------
 bool g_labacorn_detected   = false;
 bool g_gate_detected       = false;
 bool g_crosswalk_detected  = false;
+bool g_rotary_detected     = false;
+
+// YOLO 좌/우 표지판
+bool g_left_sign_detected  = false;
+bool g_right_sign_detected = false;
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -54,6 +70,24 @@ void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
   g_crosswalk_detected = msg->data;
 }
 
+// -------------------- 콜백: Rotary 감지 --------------------
+void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_rotary_detected = msg->data;
+}
+
+// -------------------- 콜백: YOLO 좌회전 표지판 --------------------
+void CB_LeftSignDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_left_sign_detected = msg->data;
+}
+
+// -------------------- 콜백: YOLO 우회전 표지판 --------------------
+void CB_RightSignDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_right_sign_detected = msg->data;
+}
+
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -67,6 +101,9 @@ int main(int argc, char** argv)
   std::string topic_labacorn_detected;
   std::string topic_gate_detected;
   std::string topic_crosswalk_detected;
+  std::string topic_rotary_detected;
+  std::string topic_left_sign_detected;
+  std::string topic_right_sign_detected;
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
@@ -80,10 +117,27 @@ int main(int argc, char** argv)
                          topic_crosswalk_detected,
                          std::string("/crosswalk_detected"));
 
-  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s'",
+  pnh.param<std::string>("rotary_detected_topic",
+                         topic_rotary_detected,
+                         std::string("/rotary_detected"));
+
+  // YOLO 좌/우 회전 표지판 토픽
+  pnh.param<std::string>("left_sign_detected_topic",
+                         topic_left_sign_detected,
+                         std::string("/detect_left_sign"));
+
+  pnh.param<std::string>("right_sign_detected_topic",
+                         topic_right_sign_detected,
+                         std::string("/detect_right_sign"));
+
+  ROS_INFO("[main_node] subscribe "
+           "labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', left_sign='%s', right_sign='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
            ros::names::resolve(topic_gate_detected).c_str(),
-           ros::names::resolve(topic_crosswalk_detected).c_str());
+           ros::names::resolve(topic_crosswalk_detected).c_str(),
+           ros::names::resolve(topic_rotary_detected).c_str(),
+           ros::names::resolve(topic_left_sign_detected).c_str(),
+           ros::names::resolve(topic_right_sign_detected).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
@@ -92,12 +146,21 @@ int main(int argc, char** argv)
       nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
   ros::Subscriber sub_crosswalk =
       nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
+  ros::Subscriber sub_rotary =
+      nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
+
+  ros::Subscriber sub_left_sign =
+      nh.subscribe(topic_left_sign_detected, 1, CB_LeftSignDetected);
+  ros::Subscriber sub_right_sign =
+      nh.subscribe(topic_right_sign_detected, 1, CB_RightSignDetected);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
   mission_labacorn_init(nh, pnh);
   mission_gate_init(nh, pnh);
   mission_crosswalk_init(nh, pnh);
+  mission_rotary_init(nh, pnh);
+  mission_AB_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
@@ -111,7 +174,8 @@ int main(int argc, char** argv)
 
     // -----------------------------
     // 1) 미션 상태 결정 로직
-    //    (우선순위: 게이트 > 횡단보도 > 라바콘 > 기본 차선)
+    //    우선순위 예시:
+    //    게이트 > 횡단보도 > 라바콘 > 로터리 > 좌/우표지판 > 기본 차선
     // -----------------------------
     if (g_gate_detected)
     {
@@ -125,6 +189,14 @@ int main(int argc, char** argv)
     {
       g_current_state = MISSION_LABACORN;
     }
+    else if (g_rotary_detected)
+    {
+      g_current_state = MISSION_ROTARY;
+    }
+    else if (g_left_sign_detected || g_right_sign_detected)
+    {
+      g_current_state = MISSION_TURNSIGN;
+    }
     else
     {
       g_current_state = MISSION_LANE;
@@ -134,9 +206,11 @@ int main(int argc, char** argv)
     if (g_current_state != prev_state)
     {
       const char* state_name = "LANE";
-      if (g_current_state == MISSION_LABACORN)      state_name = "LABACORN";
-      else if (g_current_state == MISSION_GATE)     state_name = "GATE";
+      if (g_current_state == MISSION_LABACORN)       state_name = "LABACORN";
+      else if (g_current_state == MISSION_GATE)      state_name = "GATE";
       else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
+      else if (g_current_state == MISSION_ROTARY)    state_name = "ROTARY";
+      else if (g_current_state == MISSION_TURNSIGN)  state_name = "TURN_SIGN";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       prev_state = g_current_state;
@@ -152,17 +226,39 @@ int main(int argc, char** argv)
         break;
 
       case MISSION_CROSSWALK:
-        mission_crosswalk_step();   // ← 여기 안에서 7초 정지 + 2초 직진
+        mission_crosswalk_step();
         break;
 
       case MISSION_LABACORN:
-        // 라바콘, 터널 둘 다 이 로직 사용
         mission_labacorn_step();
         break;
 
       case MISSION_GATE:
         mission_gate_step();
         break;
+
+      case MISSION_ROTARY:
+        mission_rotary_step();
+        break;
+
+      case MISSION_TURNSIGN:
+      {
+        // YOLO 플래그를 dir로 변환해서 step에 인자로 전달
+        int dir = 0;  // -1=LEFT, +1=RIGHT, 0=NONE
+
+        if (g_left_sign_detected && !g_right_sign_detected)
+          dir = -1;
+        else if (g_right_sign_detected && !g_left_sign_detected)
+          dir = +1;
+        else if (g_left_sign_detected && g_right_sign_detected)
+        {
+          // 둘 다 true면 일단 왼쪽 우선 (필요시 정책 변경 가능)
+          dir = -1;
+        }
+
+        mission_AB_step(dir);
+        break;
+      }
 
       default:
         mission_lane_step();
