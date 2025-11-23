@@ -1,1 +1,0 @@
-yolo detect predict model=best.pt source=autorace_left.jpg

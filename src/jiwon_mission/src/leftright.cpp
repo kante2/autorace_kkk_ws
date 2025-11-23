@@ -1,33 +1,42 @@
-//ORB 특징점 검출
+// KAZE 기반 좌/우 표지판 매칭 온라인 버전 (ROI 사용 X)
+// /usb_cam/image_rect_color 구독 → left/right/none 퍼블리시
 
 #include <ros/ros.h>
-#include <sensor_msgs/Image.h>
 #include <std_msgs/String.h>
-#include <cv_bridge/cv_bridge.h>
+#include <ros/package.h>
+
+#include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.h>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d.hpp>
 
 // ================== 전역 변수 ==================
-ros::Publisher g_pub_label;
 
-// ORB 특징 추출기 + 매처
+// 특징 추출기 + 매처
 cv::Ptr<cv::Feature2D> g_feat;
-cv::BFMatcher g_matcher(cv::NORM_HAMMING, false);
+cv::BFMatcher g_matcher(cv::NORM_L2, false);
 
-// 템플릿 이미지 (그레이)
+// 템플릿 이미지
 cv::Mat g_left_gray, g_right_gray;
 cv::Mat g_desc_left, g_desc_right;
 std::vector<cv::KeyPoint> g_kp_left, g_kp_right;
 
 // 파라미터
-double g_ratio_thresh     = 0.75;  // ORB 매칭 ratio test
-int    g_min_good_matches = 5;     // good match 최소 개수
-bool   g_use_circle_roi   = true;  // 원 검출 사용할지 여부
+double g_ratio_thresh        = 0.80; // 매칭 ratio test
+int    g_min_good_matches    = 3;    // good match 최소 개수
+
+// 퍼블리셔
+ros::Publisher g_pub_label;
+std::string g_pub_topic = "/leftright_sign";
+
+// 디버그용 윈도우 이름
+const std::string WIN_NAME = "leftright_kaze_online";
 
 // ================== 유틸 함수 ==================
 
+// 템플릿 로드
 bool loadTemplates(const std::string& left_path,
                    const std::string& right_path)
 {
@@ -41,11 +50,9 @@ bool loadTemplates(const std::string& left_path,
         return false;
     }
 
-    // 그레이 변환
     cv::cvtColor(left_color,  g_left_gray,  cv::COLOR_BGR2GRAY);
     cv::cvtColor(right_color, g_right_gray, cv::COLOR_BGR2GRAY);
 
-    // ORB 디스크립터 계산
     g_feat->detectAndCompute(g_left_gray,  cv::noArray(), g_kp_left,  g_desc_left);
     g_feat->detectAndCompute(g_right_gray, cv::noArray(), g_kp_right, g_desc_right);
 
@@ -55,12 +62,17 @@ bool loadTemplates(const std::string& left_path,
         return false;
     }
 
-    ROS_INFO("Loaded templates: left_kp=%d, right_kp=%d",
+    ROS_INFO("Templates loaded: left_kp=%d, right_kp=%d",
              (int)g_kp_left.size(), (int)g_kp_right.size());
+
+    cv::imshow("template_left",  g_left_gray);
+    cv::imshow("template_right", g_right_gray);
+    cv::waitKey(1);
+
     return true;
 }
 
-// ORB 매칭 점수 계산 (good match 개수)
+// 매칭 점수 계산
 int computeMatchScore(const cv::Mat& desc_query, const cv::Mat& desc_train)
 {
     if (desc_query.empty() || desc_train.empty())
@@ -81,52 +93,54 @@ int computeMatchScore(const cv::Mat& desc_query, const cv::Mat& desc_train)
     return good;
 }
 
-// 회색 영상에서 원(표지판) ROI 찾기
-bool detectCircleROI(const cv::Mat& gray, cv::Rect& roi_rect)
+// (참고용) 파란 표지판 ROI 함수 - 지금은 사용 안 함
+bool detectBlueSignROI(const cv::Mat& bgr, cv::Rect& roi_rect)
 {
-    cv::Mat blur;
-    cv::medianBlur(gray, blur, 5);
+    if (bgr.empty()) return false;
 
-    std::vector<cv::Vec3f> circles;
-    cv::HoughCircles(blur, circles, cv::HOUGH_GRADIENT,
-                     1.2,                    // dp
-                     gray.rows / 4,         // minDist
-                     80,                    // param1 (Canny high threshold)
-                     30,                    // param2 (center detection threshold)
-                     20,                    // minRadius (조정 가능)
-                     200);                  // maxRadius (조정 가능)
+    cv::Mat hsv;
+    cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
 
-    if (circles.empty())
-        return false;
+    cv::Mat mask1, mask2, mask;
+    cv::inRange(hsv, cv::Scalar(90,  80, 80), cv::Scalar(130,255,255), mask1);
+    cv::inRange(hsv, cv::Scalar(100, 80, 80), cv::Scalar(140,255,255), mask2);
+    mask = mask1 | mask2;
 
-    // 가장 큰 원 하나 선택
-    cv::Vec3f best = circles[0];
-    for (const auto& c : circles)
+    cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 1);
+    cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    if (contours.empty()) return false;
+
+    double best_area = 0.0;
+    size_t best_idx  = 0;
+
+    for (size_t i = 0; i < contours.size(); ++i)
     {
-        if (c[2] > best[2]) best = c;
+        double area = cv::contourArea(contours[i]);
+        if (area > best_area)
+        {
+            best_area = area;
+            best_idx  = i;
+        }
     }
 
-    int x = (int)std::round(best[0]);
-    int y = (int)std::round(best[1]);
-    int r = (int)std::round(best[2]);
+    if (best_area < 1000.0)
+        return false;
 
-    int x0 = std::max(0, x - r);
-    int y0 = std::max(0, y - r);
-    int x1 = std::min(gray.cols, x + r);
-    int y1 = std::min(gray.rows, y + r);
+    roi_rect = cv::boundingRect(contours[best_idx]);
 
-    roi_rect = cv::Rect(cv::Point(x0, y0), cv::Point(x1, y1));
+    int pad = 10;
+    roi_rect.x      = std::max(0, roi_rect.x - pad);
+    roi_rect.y      = std::max(0, roi_rect.y - pad);
+    roi_rect.width  = std::min(bgr.cols - roi_rect.x, roi_rect.width + 2*pad);
+    roi_rect.height = std::min(bgr.rows - roi_rect.y, roi_rect.height + 2*pad);
+
     return true;
 }
 
-void publishLabel(const std::string& label)
-{
-    std_msgs::String msg;
-    msg.data = label;
-    g_pub_label.publish(msg);
-}
-
-// ================== 콜백 ==================
+// ================== 콜백: 이미지 한 장 처리 ==================
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -137,114 +151,103 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
     }
     catch (cv_bridge::Exception& e)
     {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
+        ROS_WARN("cv_bridge exception: %s", e.what());
         return;
     }
 
     cv::Mat frame = cv_ptr->image;
+    if (frame.empty()) return;
+
+    // --- 전체 이미지 사용 (ROI X) ---
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
-    cv::Mat roi_gray = gray;
-    cv::Rect roi_rect(0, 0, gray.cols, gray.rows);
+    std::vector<cv::KeyPoint> kp;
+    cv::Mat desc;
+    g_feat->detectAndCompute(gray, cv::noArray(), kp, desc);
 
-    if (g_use_circle_roi)
+    if (desc.empty())
     {
-        if (detectCircleROI(gray, roi_rect))
-        {
-            roi_gray = gray(roi_rect);
-        }
-        else
-        {
-            // 원 못 찾으면 전체 이미지 사용
-            roi_gray = gray;
-        }
-    }
-
-    // ORB 특징 추출
-    std::vector<cv::KeyPoint> kp_roi;
-    cv::Mat desc_roi;
-    g_feat->detectAndCompute(roi_gray, cv::noArray(), kp_roi, desc_roi);
-
-    if (desc_roi.empty())
-    {
-        publishLabel("unknown");
+        ROS_WARN_THROTTLE(1.0, "[INFO] No KAZE features in frame");
+        std_msgs::String out;
+        out.data = "none";
+        g_pub_label.publish(out);
         return;
     }
 
-    // 템플릿과 매칭
-    int score_left  = computeMatchScore(desc_roi, g_desc_left);
-    int score_right = computeMatchScore(desc_roi, g_desc_right);
+    int score_left  = computeMatchScore(desc, g_desc_left);
+    int score_right = computeMatchScore(desc, g_desc_right);
 
-    std::string label = "unknown";
-    if (score_left < g_min_good_matches && score_right < g_min_good_matches)
+    std::string label = "none";
+
+    if (score_left > g_min_good_matches || score_right > g_min_good_matches)
     {
-        label = "unknown";
-    }
-    else if (score_left > score_right)
-    {
-        label = "left";
-    }
-    else if (score_right > score_left)
-    {
-        label = "right";
-    }
-    else
-    {
-        label = "unknown";
+        label = (score_left > score_right) ? "left" : "right";
     }
 
     ROS_INFO_THROTTLE(1.0,
-        "ORB scores -> left: %d, right: %d, label: %s",
+        "scoreL=%d scoreR=%d -> %s",
         score_left, score_right, label.c_str());
 
-    publishLabel(label);
+    // 퍼블리시
+    std_msgs::String out;
+    out.data = label;
+    g_pub_label.publish(out);
 
-    // 디버그용으로 보고 싶으면 주석 해제
-    
-    cv::rectangle(frame, roi_rect, cv::Scalar(0,255,0), 2);
-    cv::putText(frame, label, roi_rect.tl() + cv::Point(0,-10),
-                cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0,255,0), 2);
-    cv::imshow("leftright_debug", frame);
+    // 디버그용 텍스트만 화면 좌상단에 표시
+    cv::putText(frame, label,
+                cv::Point(10, 40),
+                cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                cv::Scalar(0,255,0), 2);
+
+    cv::imshow(WIN_NAME, frame);
     cv::waitKey(1);
-    
 }
 
 // ================== main ==================
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "leftright");
+    ros::init(argc, argv, "leftright_kaze_online");
     ros::NodeHandle nh;
     ros::NodeHandle pnh("~");
 
-    // ORB 생성 (원하면 maxFeatures 조절)
-    g_feat = cv::ORB::create(800);
-    g_matcher = cv::BFMatcher(cv::NORM_HAMMING, false);
+    // === KAZE 생성 ===
+    g_feat    = cv::KAZE::create();
+    g_matcher = cv::BFMatcher(cv::NORM_L2);
 
-    // 파라미터
-    std::string image_topic;
-    std::string left_template_path;
-    std::string right_template_path;
+    // 윈도우
+    cv::namedWindow(WIN_NAME, cv::WINDOW_NORMAL);
+    cv::resizeWindow(WIN_NAME, 800, 600);
 
-    pnh.param<std::string>("image_topic",        image_topic,        std::string("/camera/image_rect_color"));
-    pnh.param<std::string>("left_template_path", left_template_path, std::string("left.png"));
-    pnh.param<std::string>("right_template_path", right_template_path, std::string("right.png"));
-    pnh.param("ratio_thresh",     g_ratio_thresh,     0.75);
-    pnh.param("min_good_matches", g_min_good_matches, 5);
-    pnh.param("use_circle_roi",   g_use_circle_roi,   true);
+    // 템플릿 경로 (패키지 내부)
+    std::string pkg_path = ros::package::getPath("jiwon_mission");
+    std::string default_left_tpl  = pkg_path + "/data/ab_truth_left.png";
+    std::string default_right_tpl = pkg_path + "/data/ab_truth_right.png";
 
-    // 템플릿 로딩
-    if (!loadTemplates(left_template_path, right_template_path))
-    {
-        ROS_WARN("Template load failed. Node will run but output may be 'unknown' only.");
-    }
+    std::string left_tpl, right_tpl;
+    pnh.param("left_template_path",  left_tpl,  default_left_tpl);
+    pnh.param("right_template_path", right_tpl, default_right_tpl);
 
-    // 퍼블리셔 / 서브스크라이버
-    g_pub_label = pnh.advertise<std_msgs::String>("sign_label", 1);
+    pnh.param("ratio_thresh",       g_ratio_thresh,      0.80);
+    pnh.param("min_good_matches",   g_min_good_matches,  3);
+    pnh.param("pub_topic",          g_pub_topic,         std::string("/leftright_sign"));
+
+    ROS_INFO("Templates: %s / %s", left_tpl.c_str(), right_tpl.c_str());
+    if (!loadTemplates(left_tpl, right_tpl))
+        return -1;
+
+    // 퍼블리셔 & 서브스크라이버
+    g_pub_label = nh.advertise<std_msgs::String>(g_pub_topic, 1);
+
+    std::string image_topic = "/usb_cam/image_rect_color";
+    pnh.param("image_topic", image_topic, image_topic);
     ros::Subscriber sub_img = nh.subscribe(image_topic, 1, imageCallback);
+    ROS_INFO("Subscribe image: %s, publish label: %s",
+             image_topic.c_str(), g_pub_topic.c_str());
 
-    ROS_INFO("leftright (ORB) node started.");
     ros::spin();
+
+    cv::destroyAllWindows();
     return 0;
 }
