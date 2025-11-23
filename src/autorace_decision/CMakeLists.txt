@@ -46,10 +46,12 @@ add_executable(main_node
   src/main_node.cpp
   src/mission_lane_toMain.cpp
   src/mission_labacorn_toMain.cpp
+  src/mission_AB_toMain.cpp
   # ----------
   src/mission_gate/mission_gate.cpp
   src/mission_crosswalk/mission_crosswalk.cpp
   src/mission_rotary/mission_rotary.cpp
+  src/mission_AB_toMain.cpp
   # 필요하면 나중에 이런 것도 추가 가능
   # src/mission_parking.cpp
   # src/mission_rotary.cpp
