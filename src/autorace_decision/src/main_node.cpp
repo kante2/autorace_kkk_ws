@@ -24,6 +24,10 @@ void mission_crosswalk_step();
 void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_rotary_step();
 
+// missin_parking.cpp
+void mission_parking_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+void mission_parking_step();
+
 // -------------------- 미션 상태 enum --------------------
 enum MissionState
 {
@@ -31,7 +35,8 @@ enum MissionState
   MISSION_LABACORN,
   MISSION_GATE,
   MISSION_CROSSWALK,
-  MISSION_ROTARY
+  MISSION_ROTARY,
+  MISSION_PARKING
 };
 
 MissionState g_current_state = MISSION_LANE;
@@ -41,6 +46,8 @@ bool g_labacorn_detected   = false;
 bool g_gate_detected       = false;
 bool g_crosswalk_detected  = false;
 bool g_rotary_detected     = false;
+bool g_parking_detected    = false;
+
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -66,6 +73,11 @@ void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
   g_rotary_detected = msg->data;
 }
 
+void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_parking_detected = msg->data;
+}
+
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -80,6 +92,7 @@ int main(int argc, char** argv)
   std::string topic_gate_detected;
   std::string topic_crosswalk_detected;
   std::string topic_rotary_detected;
+  std::string topic_parking_detected;
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
@@ -92,15 +105,21 @@ int main(int argc, char** argv)
   pnh.param<std::string>("crosswalk_detected_topic",
                          topic_crosswalk_detected,
                          std::string("/crosswalk_detected"));
+
   pnh.param<std::string>("rotary_detected_topic",
                          topic_rotary_detected,
                          std::string("/rotary_detected"));
 
-  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s'",
+  pnh.param<std::string>("parking_detected_topic",
+                         topic_parking_detected,
+                         std::string("/parking_detected"));
+
+  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', parking='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
            ros::names::resolve(topic_gate_detected).c_str(),
            ros::names::resolve(topic_crosswalk_detected).c_str(),
-           ros::names::resolve(topic_rotary_detected).c_str());
+           ros::names::resolve(topic_rotary_detected).c_str(),
+           ros::names::resolve(topic_parking_detected).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
@@ -111,6 +130,8 @@ int main(int argc, char** argv)
       nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
   ros::Subscriber sub_rotary =
       nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
+  ros::Subscriber sub_parking =
+      nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
@@ -118,10 +139,11 @@ int main(int argc, char** argv)
   mission_gate_init(nh, pnh);
   mission_crosswalk_init(nh, pnh);
   mission_rotary_init(nh, pnh);
+  mission_parking_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
-  ros::Rate rate(30.0);  // 30 Hz
+  ros::Rate rate(10.0);  // 10 Hz
 
   MissionState prev_state = g_current_state;
 
@@ -149,6 +171,10 @@ int main(int argc, char** argv)
     {
       g_current_state = MISSION_ROTARY;
     }
+    else if (g_parking_detected)
+    {
+      g_current_state = MISSION_PARKING;
+    }
     else
     {
       g_current_state = MISSION_LANE;
@@ -162,6 +188,7 @@ int main(int argc, char** argv)
       else if (g_current_state == MISSION_GATE)     state_name = "GATE";
       else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
       else if (g_current_state == MISSION_ROTARY) state_name = "ROTARY";
+      else if (g_current_state == MISSION_PARKING) state_name = "PARKING";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       prev_state = g_current_state;
@@ -191,6 +218,10 @@ int main(int argc, char** argv)
       
       case MISSION_ROTARY:
         mission_rotary_step();
+        break;
+
+      case MISSION_PARKING:
+        mission_parking_step();
         break;
 
       default:

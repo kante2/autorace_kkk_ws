@@ -64,9 +64,9 @@ add_definitions(${PCL_DEFINITIONS})
 ########################################
 ##   노드 추가 편하게 쓰는 헬퍼 함수   ##
 ########################################
-function(add_wego_node node_name src_file)
+function(add_wego_node node_name)
   add_executable(${node_name}
-    ${src_file}
+    ${ARGN}
   )
 
   add_dependencies(${node_name}
