@@ -1,6 +1,5 @@
 // mission_lane_toMain.cpp
 #include <ros/ros.h>
-#include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/PointStamped.h>
 
@@ -117,7 +116,7 @@ static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
 }
 
 // -------------------- 콜백: curvature_center --------------------
-static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg)
+static void curvatureCenterCB(const std_msgs::Float64::ConstPtr& msg)
 {
   double center_curv = msg->data;
 

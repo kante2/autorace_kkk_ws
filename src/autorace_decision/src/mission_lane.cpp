@@ -1,5 +1,4 @@
 #include <ros/ros.h>
-#include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Bool.h>
@@ -117,7 +116,7 @@ void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
 
 
 // -------------------- 콜백: curvature_center --------------------
-void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg)
+void curvatureCenterCB(const std_msgs::Float64::ConstPtr& msg)
 {
   double center_curv = msg->data;
 

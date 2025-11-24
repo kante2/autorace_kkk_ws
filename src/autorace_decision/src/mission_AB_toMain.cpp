@@ -28,7 +28,7 @@ static double g_motor_max_cmd  = 900.0;
 static double g_motor_gain     = 300.0;
 
 // 회전 관련 파라미터
-static double g_turn_duration_sec = 2.0;   // 회전+전진 시간 (초)
+static double g_turn_duration_sec = 3.0;   // 회전+전진 시간 (초) - 하드코딩 3초
 static double g_turn_steer_cmd    = 0.5;   // -1~+1 중 어느 정도로 꺾을지
 
 // 퍼블리셔
@@ -67,7 +67,7 @@ void mission_AB_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("motor_gain",     g_motor_gain,     300.0);
 
   // 회전 관련 파라미터
-  pnh.param<double>("turn_duration_sec", g_turn_duration_sec, 2.0);
+  pnh.param<double>("turn_duration_sec", g_turn_duration_sec, 3.0);
   pnh.param<double>("turn_steer_cmd",    g_turn_steer_cmd,    0.5);
 
   ROS_INFO("[AB_turn] publish motor='%s', servo='%s'",
@@ -138,6 +138,9 @@ void mission_AB_step(int dir)
     return;
   }
 
+  // 회전 방향을 강제로 우측(+1)으로 고정
+  dir = 1;
+
   // 방향이 바뀌었거나, 처음 시작하는 경우 → 타이머 리셋 후 시작
   if (!g_turn_running || (dir != g_current_turn_dir))
   {
@@ -167,7 +170,7 @@ void mission_AB_step(int dir)
   else
   {
     // 회전 끝: 직진 유지 (필요하면 speed_cmd=0.0로 바꿔도 가능)
-    steer_cmd = 900.0;
+    steer_cmd = 0.0;
     speed_cmd = g_turn_speed_mps;
 
     ROS_INFO_THROTTLE(1.0,

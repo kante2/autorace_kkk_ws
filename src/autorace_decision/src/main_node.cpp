@@ -1,7 +1,9 @@
 // main_node.cpp
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <geometry_msgs/PointStamped.h>
 #include <string>
+#include <vector>
 
 // -------------------- 미션 함수 선언 --------------------
 // mission_lane.cpp
@@ -29,6 +31,11 @@ void mission_AB_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 // dir: -1 = LEFT, +1 = RIGHT, 0 = NONE
 void mission_AB_step(int turn_dir);
 
+// mission_color_toMain.cpp (빨강/파랑 구간 속도 변경 미션)
+void mission_color_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+// color_code: 0=none, 1=red, 2=blue
+void mission_color_step(int color_code);
+
 // -------------------- 미션 상태 enum --------------------
 enum MissionState
 {
@@ -37,10 +44,24 @@ enum MissionState
   MISSION_GATE,
   MISSION_CROSSWALK,
   MISSION_ROTARY,
-  MISSION_TURNSIGN   // YOLO 좌/우 표지판
+  MISSION_TURNSIGN,   // YOLO 좌/우 표지판
+  MISSION_COLOR       // 빨강/파랑 속도 제어
 };
 
 MissionState g_current_state = MISSION_LANE;
+std::vector<MissionState> g_mission_plan = {
+    MISSION_COLOR,
+    MISSION_CROSSWALK,
+    MISSION_LABACORN,
+    MISSION_TURNSIGN,
+    MISSION_ROTARY,
+    MISSION_LABACORN,
+    MISSION_LABACORN,
+    MISSION_GATE
+};
+size_t g_stage_index = 0;
+bool   g_stage_active = false;
+ros::Time g_stage_start;
 
 // -------------------- 감지 토픽 상태 플래그 --------------------
 bool g_labacorn_detected   = false;
@@ -51,6 +72,9 @@ bool g_rotary_detected     = false;
 // YOLO 좌/우 표지판
 bool g_left_sign_detected  = false;
 bool g_right_sign_detected = false;
+
+// 빨강/파랑 차선 색
+int  g_lane_color_code     = 0;   // 0=none, 1=red, 2=blue
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -88,6 +112,30 @@ void CB_RightSignDetected(const std_msgs::Bool::ConstPtr& msg)
   g_right_sign_detected = msg->data;
 }
 
+// -------------------- 콜백: lane_color_node (center_color_px) --------------------
+void CB_LaneColor(const geometry_msgs::PointStamped::ConstPtr& msg)
+{
+  int code = static_cast<int>(msg->point.x);
+  if (code < 0) code = 0;
+  if (code > 2) code = 2;
+  g_lane_color_code = code;
+}
+
+// -------------------- 현재 미션 단계 완료 조건 --------------------
+bool isDetectedForState(MissionState s)
+{
+  switch (s)
+  {
+    case MISSION_COLOR:     return (g_lane_color_code > 0);
+    case MISSION_CROSSWALK: return g_crosswalk_detected;
+    case MISSION_LABACORN:  return g_labacorn_detected;
+    case MISSION_TURNSIGN:  return (g_left_sign_detected || g_right_sign_detected);
+    case MISSION_ROTARY:    return g_rotary_detected;
+    case MISSION_GATE:      return g_gate_detected;
+    default:                return false;
+  }
+}
+
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -104,6 +152,7 @@ int main(int argc, char** argv)
   std::string topic_rotary_detected;
   std::string topic_left_sign_detected;
   std::string topic_right_sign_detected;
+  std::string topic_center_color;   // lane_color_node 출력
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
@@ -130,14 +179,21 @@ int main(int argc, char** argv)
                          topic_right_sign_detected,
                          std::string("/detect_right_sign"));
 
+  // lane_color_node 토픽
+  pnh.param<std::string>("center_color_topic",
+                         topic_center_color,
+                         std::string("/perception/center_color_px"));
+
   ROS_INFO("[main_node] subscribe "
-           "labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', left_sign='%s', right_sign='%s'",
+           "labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', "
+           "left_sign='%s', right_sign='%s', center_color='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
            ros::names::resolve(topic_gate_detected).c_str(),
            ros::names::resolve(topic_crosswalk_detected).c_str(),
            ros::names::resolve(topic_rotary_detected).c_str(),
            ros::names::resolve(topic_left_sign_detected).c_str(),
-           ros::names::resolve(topic_right_sign_detected).c_str());
+           ros::names::resolve(topic_right_sign_detected).c_str(),
+           ros::names::resolve(topic_center_color).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
@@ -154,6 +210,9 @@ int main(int argc, char** argv)
   ros::Subscriber sub_right_sign =
       nh.subscribe(topic_right_sign_detected, 1, CB_RightSignDetected);
 
+  ros::Subscriber sub_center_color =
+      nh.subscribe(topic_center_color, 1, CB_LaneColor);
+
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
   mission_labacorn_init(nh, pnh);
@@ -161,6 +220,7 @@ int main(int argc, char** argv)
   mission_crosswalk_init(nh, pnh);
   mission_rotary_init(nh, pnh);
   mission_AB_init(nh, pnh);
+  mission_color_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
@@ -173,60 +233,53 @@ int main(int argc, char** argv)
     ros::spinOnce();
 
     // -----------------------------
-    // 1) 미션 상태 결정 로직
-    //    우선순위 예시:
-    //    게이트 > 횡단보도 > 라바콘 > 로터리 > 좌/우표지판 > 기본 차선
-    // -----------------------------
-    if (g_gate_detected)
-    {
-      g_current_state = MISSION_GATE;
+    // 1) 미션 상태 결정 로직 (주어진 순서대로 진행)
+    MissionState target_state = g_mission_plan[g_stage_index];
+    bool detected = isDetectedForState(target_state);
+
+    // 아직 단계 진입 전: 감지되면 시작
+    if (!g_stage_active) {
+      if (detected) {
+        g_stage_active = true;
+        g_stage_start  = ros::Time::now();
+        g_current_state = target_state;
+        ROS_INFO("[main_node] stage %zu START (state=%d)", g_stage_index, g_current_state);
+      } else {
+        g_current_state = MISSION_LANE;  // 기본은 차선 추종
+      }
     }
-    else if (g_crosswalk_detected)
-    {
-      g_current_state = MISSION_CROSSWALK;
-    }
-    else if (g_labacorn_detected)
-    {
-      g_current_state = MISSION_LABACORN;
-    }
-    else if (g_rotary_detected)
-    {
-      g_current_state = MISSION_ROTARY;
-    }
-    else if (g_left_sign_detected || g_right_sign_detected)
-    {
-      g_current_state = MISSION_TURNSIGN;
-    }
-    else
-    {
-      g_current_state = MISSION_LANE;
+    // 단계 진행 중
+    else {
+      g_current_state = target_state;
+
+      // 완료 조건: 감지 해제 + 최소 지속 시간(안전상 여유)
+      double elapsed = (ros::Time::now() - g_stage_start).toSec();
+      double min_dwell = 0.5;  // 기본 최소 지속 시간
+      if (target_state == MISSION_CROSSWALK) min_dwell = 3.0;  // 정지/직진 구간 확보
+
+      if (!detected && elapsed >= min_dwell) {
+        g_stage_active = false;
+        if (g_stage_index + 1 < g_mission_plan.size()) {
+          ++g_stage_index;
+          ROS_INFO("[main_node] stage COMPLETE -> advance to %zu", g_stage_index);
+        } else {
+          ROS_INFO("[main_node] final stage complete, stay on last mission");
+        }
+      }
     }
 
-    // 상태 변경 시 로그
-    if (g_current_state != prev_state)
-    {
-      const char* state_name = "LANE";
-      if (g_current_state == MISSION_LABACORN)       state_name = "LABACORN";
-      else if (g_current_state == MISSION_GATE)      state_name = "GATE";
-      else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
-      else if (g_current_state == MISSION_ROTARY)    state_name = "ROTARY";
-      else if (g_current_state == MISSION_TURNSIGN)  state_name = "TURN_SIGN";
-
-      ROS_INFO("[main_node] Mission changed -> %s", state_name);
+    if (prev_state != g_current_state) {
+      ROS_INFO("[main_node] state change: %d -> %d", prev_state, g_current_state);
       prev_state = g_current_state;
     }
 
     // -----------------------------
-    // 2) 현재 상태에 맞는 미션 한 스텝 실행
+    // 2) 미션 실행
     // -----------------------------
     switch (g_current_state)
     {
       case MISSION_LANE:
         mission_lane_step();
-        break;
-
-      case MISSION_CROSSWALK:
-        mission_crosswalk_step();
         break;
 
       case MISSION_LABACORN:
@@ -237,36 +290,32 @@ int main(int argc, char** argv)
         mission_gate_step();
         break;
 
+      case MISSION_CROSSWALK:
+        mission_crosswalk_step();
+        break;
+
       case MISSION_ROTARY:
         mission_rotary_step();
         break;
 
       case MISSION_TURNSIGN:
       {
-        // YOLO 플래그를 dir로 변환해서 step에 인자로 전달
-        int dir = 0;  // -1=LEFT, +1=RIGHT, 0=NONE
-
-        if (g_left_sign_detected && !g_right_sign_detected)
+        int dir = 0;
+        if (g_left_sign_detected && !g_right_sign_detected) {
           dir = -1;
-        else if (g_right_sign_detected && !g_left_sign_detected)
-          dir = +1;
-        else if (g_left_sign_detected && g_right_sign_detected)
-        {
-          // 둘 다 true면 일단 왼쪽 우선 (필요시 정책 변경 가능)
-          dir = -1;
+        } else if (g_right_sign_detected && !g_left_sign_detected) {
+          dir = 1;
         }
-
         mission_AB_step(dir);
         break;
       }
 
-      default:
-        mission_lane_step();
+      case MISSION_COLOR:
+        mission_color_step(g_lane_color_code);
         break;
     }
 
     rate.sleep();
   }
 
-  return 0;
 }

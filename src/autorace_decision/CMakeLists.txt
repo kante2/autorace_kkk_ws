@@ -41,6 +41,7 @@ add_executable(main_node
   src/mission_gate/mission_gate_toMain.cpp
   src/mission_AB_toMain.cpp
   src/mission_rotary/mission_rotary.cpp
+  src/mission_color_toMain.cpp
 )
 
 target_compile_features(main_node PRIVATE cxx_std_11)
