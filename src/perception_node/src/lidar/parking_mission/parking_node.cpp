@@ -23,6 +23,7 @@ std::string g_detected_topic;
 std::string g_goal_topic;
 std::string g_goal_frame_id;
 std::string g_goal_marker_topic;
+std::string g_lines_marker_topic;
 
 // 검출 파라미터
 int    g_ransac_max_lines   = 5;
@@ -42,6 +43,7 @@ ros::Subscriber g_sub_scan;
 ros::Publisher  g_pub_detected;
 ros::Publisher  g_pub_goal;
 ros::Publisher  g_pub_goal_marker;
+ros::Publisher  g_pub_lines_marker;
 sensor_msgs::LaserScan::ConstPtr g_last_scan;
 std::optional<geometry_msgs::PoseStamped> g_last_goal;
 
@@ -155,6 +157,47 @@ void process()
     marker.color.a = 0.9f;
     g_pub_goal_marker.publish(marker);
   }
+
+  // 라인 시각화 (검출된 선분들)
+  if (g_pub_lines_marker)
+  {
+    visualization_msgs::Marker lines_marker;
+    lines_marker.header = goal_msg.header;
+    lines_marker.ns = "parking_lines";
+    lines_marker.id = 0;
+    lines_marker.type = visualization_msgs::Marker::LINE_LIST;
+    lines_marker.action = visualization_msgs::Marker::ADD;
+    lines_marker.scale.x = 0.02;  // 선 두께
+    lines_marker.color.r = 0.0f;
+    lines_marker.color.g = 0.4f;
+    lines_marker.color.b = 1.0f;
+    lines_marker.color.a = 0.8f;
+
+    const double half_len = 2.0;  // 각 선을 +/-2m로 표시
+    for (std::size_t i = 0; i < lines.size() && i < 3; ++i)
+    {
+      const auto& ln = lines[i];
+      // 선의 방향벡터(t)는 노멀(a,b)에 직교: t = (-b, a)
+      const double tx = -ln.b;
+      const double ty = ln.a;
+      const double norm = std::hypot(tx, ty);
+      if (norm < 1e-6) continue;
+      const double ux = tx / norm;
+      const double uy = ty / norm;
+
+      geometry_msgs::Point p1, p2;
+      p1.x = ln.centroid_x + ux * half_len;
+      p1.y = ln.centroid_y + uy * half_len;
+      p1.z = 0.0;
+      p2.x = ln.centroid_x - ux * half_len;
+      p2.y = ln.centroid_y - uy * half_len;
+      p2.z = 0.0;
+      lines_marker.points.push_back(p1);
+      lines_marker.points.push_back(p2);
+    }
+
+    g_pub_lines_marker.publish(lines_marker);
+  }
   g_last_goal = goal_msg;
 
   ROS_INFO_THROTTLE(1.0,
@@ -174,17 +217,18 @@ int main(int argc, char **argv)
   pnh.param<std::string>("goal_topic", g_goal_topic, std::string("/parking_goal"));
   pnh.param<std::string>("goal_frame_id", g_goal_frame_id, std::string("base_link"));
   pnh.param<std::string>("goal_marker_topic", g_goal_marker_topic, std::string("/parking_goal_marker"));
+  pnh.param<std::string>("lines_marker_topic", g_lines_marker_topic, std::string("/parking_lines"));
 
-  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 5);
-  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 200);
-  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.05);
+  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 4);
+  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 100);
+  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.03);
   pnh.param<int>("ransac_min_inliers", g_ransac_min_inliers, 30);
-  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 15.0);
-  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 15.0);
+  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 10.0);
+  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 10.0);
 
-  pnh.param<double>("min_width", g_min_width, 0.3);
-  pnh.param<double>("min_depth", g_min_depth, 0.2);
-  pnh.param<double>("wall_offset", g_wall_offset, 0.1);
+  pnh.param<double>("min_width", g_min_width, 0.4);
+  pnh.param<double>("min_depth", g_min_depth, 0.3);
+  pnh.param<double>("wall_offset", g_wall_offset, 0.05);
 
   ROS_INFO("[parking_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());
   ROS_INFO("[parking_node] publish detected='%s', goal='%s' (frame=%s)",
@@ -198,6 +242,7 @@ int main(int argc, char **argv)
   g_pub_detected = nh.advertise<std_msgs::Bool>(g_detected_topic, 1);
   g_pub_goal = nh.advertise<geometry_msgs::PoseStamped>(g_goal_topic, 1);
   g_pub_goal_marker = nh.advertise<visualization_msgs::Marker>(g_goal_marker_topic, 1);
+  g_pub_lines_marker = nh.advertise<visualization_msgs::Marker>(g_lines_marker_topic, 1);
 
   ros::Rate rate(15.0);
   while (ros::ok())
