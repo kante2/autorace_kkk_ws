@@ -9,7 +9,6 @@
 // mission_lane.cpp
 void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_lane_step();
-void mission_lane_set_dx_bias(double bias_px);
 
 // mission_labacorn.cpp
 void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
@@ -41,7 +40,6 @@ void mission_color_step(int color_code);
 enum MissionState
 {
   MISSION_LANE = 0,
-  MISSION_LANE_RIGHT,  // 라바콘 이후 한쪽(오른쪽) 추종
   MISSION_LABACORN,
   MISSION_GATE,
   MISSION_CROSSWALK,
@@ -54,7 +52,6 @@ std::vector<MissionState> g_mission_plan = {
     MISSION_COLOR,
     MISSION_CROSSWALK,
     MISSION_LABACORN,
-    MISSION_LANE_RIGHT,
     MISSION_ROTARY,
     MISSION_LABACORN,
     MISSION_LABACORN,
@@ -74,11 +71,14 @@ bool g_rotary_detected     = false;
 // 빨강/파랑 차선 색
 int  g_lane_color_code     = 0;   // 0=none, 1=red, 2=blue
 
-// 라바콘 이후 우측 차선 편향 주행
-bool g_right_lane_bias_active = false;
-ros::Time g_right_lane_bias_end;
-double g_right_lane_bias_px = 30.0;  // px만큼 오른쪽으로 중심 오프셋
-double g_right_lane_bias_duration = 8.0;  // 초
+// AB 하드코딩 회전용 타이머
+double g_first_lane_duration = 3.0;  // 라바콘 후 차선 주행 시간
+double g_first_ab_duration   = 8.0;  // 라바콘 후 AB 회전 시간 (하드코딩)
+int    g_first_ab_dir        = -1;   // -1=left (오른쪽 주석처리) <- 대회때 표지판 보고 바로 변경하고 실행하기,,
+bool   g_first_sequence_running = false;
+bool   g_first_sequence_done    = false;
+ros::Time g_first_sequence_start;
+int    g_labacorn_pass_count = 0;
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -118,7 +118,6 @@ bool isDetectedForState(MissionState s)
 {
   switch (s)
   {
-    case MISSION_LANE_RIGHT: return true; // 타임 기반 진입
     case MISSION_COLOR:     return (g_lane_color_code > 0);
     case MISSION_CROSSWALK: return g_crosswalk_detected;
     case MISSION_LABACORN:  return g_labacorn_detected;
@@ -133,7 +132,6 @@ const char* missionName(MissionState s)
   switch (s)
   {
     case MISSION_LANE:      return "MISSION_LANE";
-    case MISSION_LANE_RIGHT:return "MISSION_LANE_RIGHT";
     case MISSION_LABACORN:  return "MISSION_LABACORN";
     case MISSION_GATE:      return "MISSION_GATE";
     case MISSION_CROSSWALK: return "MISSION_CROSSWALK";
@@ -225,62 +223,40 @@ int main(int argc, char** argv)
     // 1) 미션 상태 결정 로직 (주어진 순서대로 진행)
     MissionState target_state = g_mission_plan[g_stage_index];
 
-    // 특별 처리: MISSION_LANE_RIGHT는 감지 없이 즉시 시작, 8초 후 종료
-    if (target_state == MISSION_LANE_RIGHT) {
-      if (!g_stage_active) {
+    bool detected = isDetectedForState(target_state);
+
+    // 아직 단계 진입 전: 감지되면 시작
+    if (!g_stage_active) {
+      if (detected) {
         g_stage_active = true;
         g_stage_start  = ros::Time::now();
-        g_right_lane_bias_active = true;
-        g_right_lane_bias_end = g_stage_start + ros::Duration(g_right_lane_bias_duration);
-        mission_lane_set_dx_bias(g_right_lane_bias_px);
         g_current_state = target_state;
-        ROS_INFO("[main_node] stage %zu START (LANE_RIGHT bias=%.1fpx for %.1fs)",
-                 g_stage_index, g_right_lane_bias_px, g_right_lane_bias_duration);
+        if (target_state == MISSION_LABACORN) {
+          ++g_labacorn_pass_count;
+          g_first_sequence_running = false;
+          g_first_sequence_done = false;
+        }
+        ROS_INFO("[main_node] stage %zu START (state=%d)", g_stage_index, g_current_state);
       } else {
-        g_current_state = target_state;
-        if (ros::Time::now() >= g_right_lane_bias_end) {
-          g_stage_active = false;
-          g_right_lane_bias_active = false;
-          mission_lane_set_dx_bias(0.0);
-          if (g_stage_index + 1 < g_mission_plan.size()) {
-            ++g_stage_index;
-            ROS_INFO("[main_node] LANE_RIGHT COMPLETE -> advance to %zu", g_stage_index);
-          } else {
-            ROS_INFO("[main_node] final stage complete, stay on last mission");
-          }
-        }
+        g_current_state = MISSION_LANE;  // 기본은 차선 추종
       }
-    } else {
-      bool detected = isDetectedForState(target_state);
+    }
+    // 단계 진행 중
+    else {
+      g_current_state = target_state;
 
-      // 아직 단계 진입 전: 감지되면 시작
-      if (!g_stage_active) {
-        if (detected) {
-          g_stage_active = true;
-          g_stage_start  = ros::Time::now();
-          g_current_state = target_state;
-          ROS_INFO("[main_node] stage %zu START (state=%d)", g_stage_index, g_current_state);
+      // 완료 조건: 감지 해제 + 최소 지속 시간(안전상 여유)
+      double elapsed = (ros::Time::now() - g_stage_start).toSec();
+      double min_dwell = 0.5;  // 기본 최소 지속 시간
+      if (target_state == MISSION_CROSSWALK) min_dwell = 3.0;  // 정지/직진 구간 확보
+
+      if (!detected && elapsed >= min_dwell) {
+        g_stage_active = false;
+        if (g_stage_index + 1 < g_mission_plan.size()) {
+          ++g_stage_index;
+          ROS_INFO("[main_node] stage COMPLETE -> advance to %zu", g_stage_index);
         } else {
-          g_current_state = MISSION_LANE;  // 기본은 차선 추종
-        }
-      }
-      // 단계 진행 중
-      else {
-        g_current_state = target_state;
-
-        // 완료 조건: 감지 해제 + 최소 지속 시간(안전상 여유)
-        double elapsed = (ros::Time::now() - g_stage_start).toSec();
-        double min_dwell = 0.5;  // 기본 최소 지속 시간
-        if (target_state == MISSION_CROSSWALK) min_dwell = 3.0;  // 정지/직진 구간 확보
-
-        if (!detected && elapsed >= min_dwell) {
-          g_stage_active = false;
-          if (g_stage_index + 1 < g_mission_plan.size()) {
-            ++g_stage_index;
-            ROS_INFO("[main_node] stage COMPLETE -> advance to %zu", g_stage_index);
-          } else {
-            ROS_INFO("[main_node] final stage complete, stay on last mission");
-          }
+          ROS_INFO("[main_node] final stage complete, stay on last mission");
         }
       }
     }
@@ -304,7 +280,36 @@ int main(int argc, char** argv)
         break;
 
       case MISSION_LABACORN:
-        mission_labacorn_step();
+        if (g_labacorn_pass_count == 1 && !g_first_sequence_done) {
+          // 첫 라바콘: 차선 3초 + AB(좌회전) 8초 하드코딩
+          if (!g_first_sequence_running) {
+            g_first_sequence_running = true;
+            g_first_sequence_start = ros::Time::now();
+          }
+          double seq_elapsed = (ros::Time::now() - g_first_sequence_start).toSec();
+
+          if (seq_elapsed < g_first_lane_duration) {
+            mission_lane_step();
+          } else if (seq_elapsed < g_first_lane_duration + g_first_ab_duration) {
+            mission_AB_step(g_first_ab_dir);   // 기본 좌회전(-1), 우회전은 dir=+1로 변경 가능
+          } 
+          // ------
+          else {
+            // 시퀀스 종료 -> 다음 스테이지로 즉시 전환
+            g_first_sequence_done = true;
+            g_first_sequence_running = false;
+            g_stage_active = false;
+            if (g_stage_index + 1 < g_mission_plan.size()) {
+              ++g_stage_index;
+              ROS_INFO("[main_node] first labacorn seq done -> advance to %zu", g_stage_index);
+            } else {
+              ROS_INFO("[main_node] final stage complete, stay on last mission");
+            }
+            g_current_state = MISSION_LANE;
+          }
+        } else {
+          mission_labacorn_step();
+        }
         break;
 
       case MISSION_GATE:
@@ -317,6 +322,10 @@ int main(int argc, char** argv)
 
       case MISSION_ROTARY:
         mission_rotary_step();
+        break;
+
+      case MISSION_TURNSIGN:
+        mission_AB_step(g_ab_turn_dir);
         break;
 
       case MISSION_COLOR:

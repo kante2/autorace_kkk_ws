@@ -138,8 +138,10 @@ void mission_AB_step(int dir)
     return;
   }
 
-  // 회전 방향을 강제로 우측(+1)으로 고정
-  dir = 1;
+  // 하드코딩: 기본 좌회전(-1). 우회전을 하려면 dir=+1로 전달.
+  if (dir == 0) {
+    dir = -1;
+  }
 
   // 방향이 바뀌었거나, 처음 시작하는 경우 → 타이머 리셋 후 시작
   if (!g_turn_running || (dir != g_current_turn_dir))
