@@ -61,11 +61,14 @@ double g_latest_steer_cmd  = 0.0;
 double g_latest_speed_cmd  = 0.0;
 ros::Time g_last_cb_time;
 bool g_have_cb_time = false;
+double g_dx_ema = 0.0;
+bool   g_have_dx_ema = false;
 
 
 // 곡률 범위 파라미터
 double g_min_curv = 3e-4;    // 최소 곡률 (예: 직선에 가까움)
 double g_max_curv = 1.5e-3;  // 최대 곡률 (예: 많이 휘어짐)
+double g_dx_ema_alpha = 0.5;
 
 // -------------------- dx 처리 로직 --------------------
 void processDx(double dx)
@@ -109,9 +112,16 @@ void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
   g_have_cb_time = true;
 
   double cx = msg->point.x;
-  double dx = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
+  double dx_raw = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
 
-  processDx(dx);
+  if (!g_have_dx_ema) {
+    g_dx_ema = dx_raw;
+    g_have_dx_ema = true;
+  } else {
+    g_dx_ema = g_dx_ema_alpha * dx_raw + (1.0 - g_dx_ema_alpha) * g_dx_ema;
+  }
+
+  processDx(g_dx_ema);
 }
 
 
@@ -219,6 +229,7 @@ int main(int argc, char** argv)
 
   // 타임아웃
   pnh.param<double>("dx_timeout_sec", g_dx_timeout_sec, 1.0);
+  pnh.param<double>("dx_ema_alpha",   g_dx_ema_alpha,   0.5);
 
   // 곡률 범위 파라미터
   pnh.param<double>("min_curvature", g_min_curv, 0.0);
