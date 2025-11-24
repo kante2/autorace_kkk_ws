@@ -30,6 +30,7 @@ double g_servo_center = 0.5;
 double g_servo_min    = 0.0;
 double g_servo_max    = 1.0;
 double g_steer_sign   = -1.0;  // 파이썬 기본값
+double g_dx_bias_px   = 0.0;   // 임시 오프셋 (우측 추종 등)
 
 // Control 파라미터
 double g_max_abs_dx_px = 83.0; // 100 -> 83
@@ -50,6 +51,12 @@ double g_motor_gain    = 300.0;
 
 // 타임아웃
 double g_dx_timeout_sec = 1.0;
+// 외부에서 dx 오프셋(px) 설정 (우측 추종 등)
+void mission_lane_set_dx_bias(double bias_px)
+{
+  g_dx_bias_px = bias_px;
+  ROS_INFO("[lane_ctrl] set dx bias = %.1f px", g_dx_bias_px);
+}
 
 // 퍼블리셔
 ros::Publisher g_pub_motor;
@@ -112,7 +119,7 @@ void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
   g_have_cb_time = true;
 
   double cx = msg->point.x;
-  double dx_raw = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
+  double dx_raw = cx - (g_bev_center_x_px + g_dx_bias_px);   // 오른쪽이 +, 왼쪽이 -
 
   if (!g_have_dx_ema) {
     g_dx_ema = dx_raw;

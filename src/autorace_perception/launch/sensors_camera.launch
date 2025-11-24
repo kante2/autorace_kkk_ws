@@ -30,4 +30,16 @@
     <param name="io_method" value="mmap"/>
     <param name="camera_info_url" value="file://$(find autorace_perception)/config/cam_calibration.yaml"/>
   </node>
+
+  <!-- Camera perception nodes -->
+  <node name="lane_center_node" pkg="autorace_perception" type="lane_center_node" output="screen"/>
+  <node name="lane_color_node"  pkg="autorace_perception" type="lane_color_node"  output="screen"/>
+  <node name="crosswalk_node"   pkg="autorace_perception" type="crosswalk_node"   output="screen"/>
+
+  <!-- YOLO 표지판 노드는 비활성 (현재 미션 플랜에서 제거됨)
+  <node name="yolo_AB_sign_node" pkg="autorace_perception" type="yolo_AB_sign_node.py" output="screen">
+    <param name="camera_topic" value="/usb_cam/image_rect_color"/>
+    <param name="model_path" value="/root/autorace_kkk_ws/src/yolo/best.pt"/>
+  </node>
+  -->
 </launch>

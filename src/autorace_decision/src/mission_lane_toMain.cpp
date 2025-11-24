@@ -23,6 +23,7 @@ static std::string g_topic_curvature_center;
 
 // BEV 중심 x 픽셀
 static double g_bev_center_x_px = 320.0;
+static double g_dx_bias_px      = 0.0;   // 임시 오프셋 (우측 추종 등)
 
 // 서보 스케일
 static double g_servo_center = 0.5;
@@ -113,7 +114,7 @@ static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg)
   g_have_cb_time = true;
 
   double cx = msg->point.x;
-  double dx_raw = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
+  double dx_raw = cx - (g_bev_center_x_px + g_dx_bias_px);   // 오른쪽이 +, 왼쪽이 -
 
   if (!g_have_dx_ema) {
     g_dx_ema = dx_raw;
@@ -155,7 +156,7 @@ static void curvatureCenterCB(const std_msgs::Float64::ConstPtr& msg)
 }
 
 // =====================================================
-// ★ main_node.cpp 에서 부를 함수들 ★
+// main_node.cpp 에서 부를 함수들
 // =====================================================
 
 void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
@@ -231,6 +232,13 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
 
   ROS_INFO("[lane_ctrl] mission_lane_init done");
+}
+
+// 외부에서 dx 오프셋(px) 설정 (우측 추종 등)
+void mission_lane_set_dx_bias(double bias_px)
+{
+  g_dx_bias_px = bias_px;
+  ROS_INFO("[lane_ctrl] set dx bias = %.1f px", g_dx_bias_px);
 }
 
 // main_node.cpp 의 while 루프 안에서 매 주기마다 호출
