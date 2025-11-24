@@ -33,7 +33,7 @@ cv::Scalar g_white_lower(0, 0, 150);
 cv::Scalar g_white_upper(179, 60, 255);
 
 // 임계값
-double g_white_ratio_threshold = 0.20;  // 흰색 비율 threshold
+double g_white_ratio_threshold = 0.15;  // 흰색 비율 threshold
 
 // 송도/대회장 전환용 플래그
 bool g_use_yellow = true;
@@ -219,7 +219,7 @@ int main(int argc, char** argv)
 
   // 파라미터
   pnh.param<bool>("show_window", g_show_window, true);
-  pnh.param<double>("white_ratio_threshold", g_white_ratio_threshold, 0.25);
+  pnh.param<double>("white_ratio_threshold", g_white_ratio_threshold, 0.15);
 
   pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
   pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.22);
