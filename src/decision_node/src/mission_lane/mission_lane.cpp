@@ -269,8 +269,8 @@ void mission_lane_step()
   } else {
     steer_cmd = 0.0;
     speed_cmd = 0.0;
-    ROS_INFO_THROTTLE(1.0,
-      "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
+    // ROS_INFO_THROTTLE(1.0,
+    //   "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
   }
 
   // ---------------- is_crosswalk 처리 (7초 정지) ----------------
@@ -320,7 +320,7 @@ void mission_lane_step()
   g_pub_motor.publish(motor_msg);
   g_pub_servo.publish(servo_msg);
 
-  ROS_INFO_THROTTLE(0.5,
-    "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
-    (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
+  // ROS_INFO_THROTTLE(0.5,
+  //   "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
+  //   (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
 }

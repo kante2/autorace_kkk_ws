@@ -47,6 +47,7 @@ bool g_gate_detected       = false;
 bool g_crosswalk_detected  = false;
 bool g_rotary_detected     = false;
 bool g_parking_detected    = false;
+bool g_parking_bag_lock    = false;
 
 
 // -------------------- 콜백: 라바콘 감지 --------------------
@@ -78,6 +79,11 @@ void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)
   g_parking_detected = msg->data;
 }
 
+void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_parking_bag_lock = msg->data;
+}
+
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -93,6 +99,7 @@ int main(int argc, char** argv)
   std::string topic_crosswalk_detected;
   std::string topic_rotary_detected;
   std::string topic_parking_detected;
+  std::string topic_parking_bag_lock;
 
   pnh.param<std::string>("labacorn_detected_topic",
                          topic_labacorn_detected,
@@ -113,6 +120,9 @@ int main(int argc, char** argv)
   pnh.param<std::string>("parking_detected_topic",
                          topic_parking_detected,
                          std::string("/parking_detected"));
+  pnh.param<std::string>("parking_bag_lock_topic",
+                         topic_parking_bag_lock,
+                         std::string("/parking_bag_lock"));
 
   ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', parking='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
@@ -120,6 +130,8 @@ int main(int argc, char** argv)
            ros::names::resolve(topic_crosswalk_detected).c_str(),
            ros::names::resolve(topic_rotary_detected).c_str(),
            ros::names::resolve(topic_parking_detected).c_str());
+  ROS_INFO("[main_node] subscribe parking_bag_lock='%s'",
+           ros::names::resolve(topic_parking_bag_lock).c_str());
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =
@@ -132,6 +144,8 @@ int main(int argc, char** argv)
       nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
   ros::Subscriber sub_parking =
       nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
+  ros::Subscriber sub_parking_lock =
+      nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
@@ -155,7 +169,11 @@ int main(int argc, char** argv)
     // 1) 미션 상태 결정 로직
     //    (우선순위: 게이트 > 횡단보도 > 라바콘 > 기본 차선)
     // -----------------------------
-    if (g_gate_detected)
+    if (g_parking_bag_lock)
+    {
+      g_current_state = MISSION_PARKING;
+    }
+    else if (g_gate_detected)
     {
       g_current_state = MISSION_GATE;
     }

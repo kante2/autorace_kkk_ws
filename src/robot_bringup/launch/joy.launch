@@ -1,0 +1,6 @@
+<!-- file: /root/autorace_kkk_ws/src/robot_bringup/launch/wheel_odom.launch -->
+<launch>
+  <!-- wheel_odom 노드 시작 -->
+  <node pkg="robot_bringup" type="joystick.py" name="joystick" output="screen">
+  </node>
+</launch>

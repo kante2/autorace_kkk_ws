@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(autorace_perception)
+project(perception_node)
 
 ## C++ 표준 (원하면 14/17로 바꿔도 됨)
 set(CMAKE_CXX_STANDARD 17)

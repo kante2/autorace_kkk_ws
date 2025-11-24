@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>autorace_perception</name>
+  <name>perception_node</name>
   <version>0.0.1</version>
   <description>The autorace_perception package</description>
 

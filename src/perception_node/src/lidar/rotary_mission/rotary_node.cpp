@@ -1,6 +1,8 @@
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Float32MultiArray.h>
+#include <sstream>
 
 #include <string>
 #include <vector>
@@ -13,6 +15,7 @@
 std::string g_scan_topic;
 std::string g_detected_topic;
 std::string g_marker_topic;
+std::string g_centroids_topic;
 
 double g_eps = 0.3;
 int g_min_pts = 7;
@@ -20,6 +23,7 @@ double g_close_dist = 1.0;  // 이 거리 이내 클러스터 존재 시 감지 
 
 ros::Subscriber g_sub_scan;
 ros::Publisher g_pub_detected;
+ros::Publisher g_pub_centroids;
 std::unique_ptr<ClusterVisualizer> g_visualizer;
 
 // -------------------- 콜백 --------------------
@@ -45,6 +49,34 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
   msg.data = has_close;
   g_pub_detected.publish(msg);
 
+  // 센트로이드 (angle, distance) 쌍을 순서대로 담아 퍼블리시
+  std_msgs::Float32MultiArray centroids_msg;
+  centroids_msg.data.reserve(det.centroids.size() * 2);
+  for (const auto &c : det.centroids)
+  {
+    const double adjusted_angle = c.angle + 360.0;  // 라이다가 뒤집힌 경우 단순 오프셋
+    centroids_msg.data.push_back(static_cast<float>(adjusted_angle));
+    centroids_msg.data.push_back(static_cast<float>(c.distance));
+  }
+  g_pub_centroids.publish(centroids_msg);
+  if (!det.centroids.empty())
+  {
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < det.centroids.size(); ++i)
+    {
+      const auto &c = det.centroids[i];
+      const double adjusted_angle = c.angle + 360.0;
+      oss << "#" << i << "=( " << std::fixed << std::setprecision(1) << adjusted_angle
+          << " deg, " << std::setprecision(2) << c.distance << " m )";
+      if (i + 1 < det.centroids.size())
+      {
+        oss << " ";
+      }
+    }
+    ROS_INFO_THROTTLE(1.0, "[rotary_node] centroids count=%zu %s",
+                      det.centroids.size(), oss.str().c_str());
+  }
+
   if (g_visualizer && det.detected)
   {
     g_visualizer->publish(det);
@@ -64,17 +96,20 @@ int main(int argc, char **argv)
   pnh.param<std::string>("scan_topic", g_scan_topic, std::string("/scan"));
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/rotary_detected"));
   pnh.param<std::string>("marker_topic", g_marker_topic, std::string("rotary/obstacle_markers"));
+  pnh.param<std::string>("centroids_topic", g_centroids_topic, std::string("rotary/centroids"));
 
   pnh.param<double>("eps", g_eps, 0.3);
   pnh.param<int>("min_pts", g_min_pts, 7);
   pnh.param<double>("close_dist", g_close_dist, 1.0);
 
   ROS_INFO("[rotary_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());
-  ROS_INFO("[rotary_node] publish detected='%s', marker='%s'",
+  ROS_INFO("[rotary_node] publish detected='%s', marker='%s', centroids='%s'",
            ros::names::resolve(g_detected_topic).c_str(),
-           ros::names::resolve(g_marker_topic).c_str());
+           ros::names::resolve(g_marker_topic).c_str(),
+           ros::names::resolve(g_centroids_topic).c_str());
 
   g_pub_detected = nh.advertise<std_msgs::Bool>(g_detected_topic, 1);
+  g_pub_centroids = nh.advertise<std_msgs::Float32MultiArray>(g_centroids_topic, 1);
   g_visualizer = std::make_unique<ClusterVisualizer>(g_marker_topic);
 
   g_sub_scan = nh.subscribe(g_scan_topic, 1, scanCallback);

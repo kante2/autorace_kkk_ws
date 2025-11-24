@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>autorace_decision</name>
+  <name>decision_node</name>
   <version>0.0.0</version>
   <description>The autorace_decision package</description>
 

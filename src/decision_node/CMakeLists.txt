@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(autorace_decision)
+project(decision_node)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -50,13 +50,13 @@ include_directories(
 # ★ main_node 안에 미션 소스들 전부 포함
 add_executable(main_node
   src/main_node.cpp
-  src/mission_lane_toMain.cpp
+  src/mission_lane/mission_lane.cpp
   src/mission_labacorn/mission_labacorn.cpp
   # ----------
   src/mission_gate/mission_gate.cpp
   src/mission_crosswalk/mission_crosswalk.cpp
   src/mission_rotary/mission_rotary.cpp
-  src/mission_parking/parking_mission.cpp
+  src/mission_parking/mission_parking.cpp
   # 필요하면 나중에 이런 것도 추가 가능
   # src/mission_parking.cpp
   # src/mission_rotary.cpp
@@ -114,7 +114,7 @@ target_link_libraries(rotary_main
 # 디버그용 parking 단독 노드
 add_executable(parking_main
   src/mission_parking/parking_debug.cpp
-  src/mission_parking/parking_mission.cpp
+  src/mission_parking/mission_parking.cpp
 )
 
 target_compile_features(parking_main PRIVATE cxx_std_17)
