@@ -43,8 +43,7 @@ cv::Scalar g_yellow_upper(45, 255, 255);
 cv::Scalar g_white_lower(0, 0, 150);
 cv::Scalar g_white_upper(179, 60, 255);
 
-// 송도/대회장 전환용 플래그
-bool g_use_yellow = true;
+bool g_use_yellow = false;
 bool g_use_white  = true;
 
 // -------------------- 헬퍼 함수들 --------------------
@@ -502,8 +501,8 @@ int main(int argc, char** argv)
   // 송도/대회장 전환용 플래그
   //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
   //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
-  pnh.param<bool>("use_yellow_lanes", g_use_yellow, true);
-  pnh.param<bool>("use_white_lanes",  g_use_white,  false);
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  true);
 
   // Sub
   ros::Subscriber img_sub =

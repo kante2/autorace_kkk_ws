@@ -46,34 +46,11 @@ include_directories(
 add_definitions(${PCL_DEFINITIONS})
 
 
-add_executable(stopline_ratio_imagetest
-  src/stopline_ratio_imagetest.cpp
-)
-target_link_libraries(stopline_ratio_imagetest
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
+#add_executable(stopline_ratio_imagetest
+#  src/stopline_ratio_imagetest.cpp
+#)
+#target_link_libraries(stopline_ratio_imagetest
+#  ${catkin_LIBRARIES}
+#  ${OpenCV_LIBRARIES}
+#)
 
-add_executable(leftright
-  src/leftright.cpp
-)
-target_link_libraries(leftright
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
-add_executable(leftright_imagetest
-  src/leftright_imagetest.cpp
-)
-target_link_libraries(leftright_imagetest
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
-add_executable(mission_ab_control
-  src/mission_ab_control.cpp
-)
-target_link_libraries(mission_ab_control
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)

@@ -33,11 +33,11 @@ cv::Scalar g_white_lower(0, 0, 150);
 cv::Scalar g_white_upper(179, 60, 255);
 
 // 임계값
-double g_white_ratio_threshold = 0.25;  // 흰색 비율 threshold
+double g_white_ratio_threshold = 0.20;  // 흰색 비율 threshold
 
 // 송도/대회장 전환용 플래그
 bool g_use_yellow = true;
-bool g_use_white  = true;
+bool g_use_white  = false;
 
 // --------------------- compute --------------------------
 double computeWhiteRatio(const cv::Mat& binary)

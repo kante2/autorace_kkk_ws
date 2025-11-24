@@ -90,9 +90,9 @@ add_wego_node(crosswalk_node
 )
 
 # AB perception node
-add_wego_node(ab_node
-  src/camera/ab_mission/ab_node.cpp
-)
+#add_wego_node(ab_node
+#  src/camera/ab_mission/ab_node.cpp
+#)
 
 # Gate mission lidar node
 add_wego_node(gate_node
