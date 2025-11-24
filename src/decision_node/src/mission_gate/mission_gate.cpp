@@ -4,6 +4,8 @@
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 
 #include <algorithm>
 #include <cmath>
@@ -13,13 +15,13 @@
 
 // ===== 전역 ROS I/O =====
 static ros::Subscriber g_sub_gate_detected;
-static ros::Subscriber g_sub_gate_distance;
+static ros::Subscriber g_sub_gate_points;
 static ros::Publisher g_pub_speed;
 
 // 토픽 이름
 static std::string g_motor_topic;
 static std::string g_gate_detected_topic;
-static std::string g_gate_distance_topic;
+static std::string g_gate_points_topic;
 
 // ===== 전역 파라미터 =====
 static double g_basic_speed = 1000.0;   // 게이트 올라가 있을 때 기본 속도 (모터 cmd)
@@ -45,10 +47,37 @@ static void gateDetectedCB(const std_msgs::Bool::ConstPtr& msg)
   g_last_gate_time = ros::Time::now();
 }
 
-static void gateDistanceCB(const std_msgs::Float64::ConstPtr& msg)
+static void gatePointsCB(const sensor_msgs::PointCloud2ConstPtr& msg)
 {
-  g_gate_dist = msg->data;
-  g_have_gate_dist = true;
+  g_gate_dist = std::numeric_limits<double>::infinity();
+  g_have_gate_dist = false;
+
+  // PointCloud2에서 평균 거리 계산 (gate_node가 게이트 클러스터만 퍼블리시)
+  if (msg->width == 0 || msg->height == 0) {
+    g_last_gate_time = ros::Time::now();
+    return;
+  }
+
+  double sum_dist = 0.0;
+  std::size_t count = 0;
+
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y) {
+    const double x = static_cast<double>(*iter_x);
+    const double y = static_cast<double>(*iter_y);
+    if (!std::isfinite(x) || !std::isfinite(y)) continue;
+    const double dist = std::sqrt(x * x + y * y);
+    if (!std::isfinite(dist)) continue;
+    sum_dist += dist;
+    ++count;
+  }
+
+  if (count > 0) {
+    g_gate_dist = sum_dist / static_cast<double>(count);
+    g_have_gate_dist = true;
+  }
+
   g_last_gate_time = ros::Time::now();
 }
 
@@ -106,17 +135,17 @@ void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   pnh.param<std::string>("motor_topic", g_motor_topic, std::string("/commands/motor/speed"));
   pnh.param<std::string>("gate_detected_topic", g_gate_detected_topic, std::string("/gate_detected"));
-  pnh.param<std::string>("gate_distance_topic", g_gate_distance_topic, std::string("/gate_distance"));
+  pnh.param<std::string>("gate_points_topic", g_gate_points_topic, std::string("/gate_points"));
 
-  ROS_INFO("[mission_gate] subscribe gate_detected='%s', gate_distance='%s'",
+  ROS_INFO("[mission_gate] subscribe gate_detected='%s', gate_points='%s'",
            ros::names::resolve(g_gate_detected_topic).c_str(),
-           ros::names::resolve(g_gate_distance_topic).c_str());
+           ros::names::resolve(g_gate_points_topic).c_str());
   ROS_INFO("[mission_gate] publish motor='%s'",
            ros::names::resolve(g_motor_topic).c_str());
 
   g_pub_speed = nh.advertise<std_msgs::Float64>(g_motor_topic, 1);
   g_sub_gate_detected = nh.subscribe(g_gate_detected_topic, 1, gateDetectedCB);
-  g_sub_gate_distance = nh.subscribe(g_gate_distance_topic, 1, gateDistanceCB);
+  g_sub_gate_points = nh.subscribe(g_gate_points_topic, 1, gatePointsCB);
 
   g_gate_down_final = false;
   g_gate_dist = std::numeric_limits<double>::infinity();

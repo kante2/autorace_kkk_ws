@@ -1,6 +1,8 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Polygon.h>
+#include <geometry_msgs/Point32.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <opencv2/opencv.hpp>
@@ -18,6 +20,8 @@ ros::Publisher g_pub_center_point;
 ros::Publisher g_pub_center_color;
 ros::Publisher g_pub_is_cross_walk;  // 횡단보도 플래그
 ros::Publisher g_pub_white_ratio;    // 흰색 비율 디버그용
+ros::Publisher g_pub_left_centers;   // 슬라이딩 윈도우 좌측 포인트 목록
+ros::Publisher g_pub_right_centers;  // 슬라이딩 윈도우 우측 포인트 목록
 
 bool g_show_window = true;
 std::string g_win_src = "src_with_roi";
@@ -557,9 +561,31 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
 
     // 4) 슬라이딩 윈도우
     cv::Mat debug_img;
-    std::vector<cv::Point2f> left_centers, right_centers;
-    runSlidingWindowCollectCenters(bev_binary, debug_img,
-                                   left_centers, right_centers);
+  std::vector<cv::Point2f> left_centers, right_centers;
+  runSlidingWindowCollectCenters(bev_binary, debug_img,
+                                 left_centers, right_centers);
+
+    // 4-1) 좌/우 윈도우 중심 좌표 배열 퍼블리시 (픽셀 단위)
+    auto publish_centers = [](const std::vector<cv::Point2f>& centers,
+                              ros::Publisher& pub,
+                              const std_msgs::Header& header)
+    {
+      (void)header; // Polygon에는 헤더가 없어 직접 넣지 않음을 명시
+      geometry_msgs::Polygon poly;
+      poly.points.reserve(centers.size());
+      for (const auto& p : centers) {
+        geometry_msgs::Point32 pt;
+        pt.x = p.x;
+        pt.y = p.y;
+        pt.z = 0.0f;
+        poly.points.push_back(pt);
+      }
+      // Polygon에는 헤더가 없어 std_msgs::Header를 직접 넣을 수 없으므로
+      // frame 정보가 필요하다면 PointStamped 배열 등 다른 메시지로 변경 고려.
+      pub.publish(poly);
+    };
+    publish_centers(left_centers,  g_pub_left_centers,  msg->header);
+    publish_centers(right_centers, g_pub_right_centers, msg->header);
 
     // 5) 차선 중심 퍼블리시
     cv::Point2f center_pt;
@@ -666,6 +692,8 @@ int main(int argc, char** argv)
   g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1); // 0=none,1=red,2=blue
   g_pub_is_cross_walk  = nh.advertise<std_msgs::Bool>("/perception/go_straight_cmd", 1);
   g_pub_white_ratio    = nh.advertise<std_msgs::Float64>("/perception/white_ratio", 1);
+  g_pub_left_centers   = nh.advertise<geometry_msgs::Polygon>("/perception/left_window_centers_px", 1);
+  g_pub_right_centers  = nh.advertise<geometry_msgs::Polygon>("/perception/right_window_centers_px", 1);
 
   if (g_show_window) {
     cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);

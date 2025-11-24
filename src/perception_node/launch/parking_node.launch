@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="perception_node" type="lane_node" name="lane_node" output="screen"/>
+  <node pkg="perception_node" type="parking_node" name="rotary_node" output="screen"/>
+</launch>
