@@ -1,0 +1,6 @@
+<launch>
+  <arg name="bag_file" default="$(find autorace_decision)/src/rosbag/ab_cmd_vel.bag"/>
+
+  <!-- /cmd_vel 및 motor/servo 명령을 녹화 -->
+  <node pkg="rosbag" type="record" name="ab_bag_record" args="-O $(arg bag_file) /cmd_vel /commands/motor/speed /commands/servo/position"/>
+</launch>

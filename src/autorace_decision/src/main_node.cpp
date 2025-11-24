@@ -30,6 +30,11 @@ void mission_rotary_step();
 void mission_AB_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 // dir: -1 = LEFT, +1 = RIGHT, 0 = NONE
 void mission_AB_step(int turn_dir);
+bool mission_AB_is_done();
+// mission_AB_left_toMain.cpp (왼쪽 차선 8초 추종)
+void mission_AB_left_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+void mission_AB_left_step();
+bool mission_AB_left_is_done();
 
 // mission_color_toMain.cpp (빨강/파랑 구간 속도 변경 미션)
 void mission_color_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
@@ -207,6 +212,7 @@ int main(int argc, char** argv)
   mission_crosswalk_init(nh, pnh);
   mission_rotary_init(nh, pnh);
   mission_AB_init(nh, pnh);
+  mission_AB_left_init(nh, pnh);
   mission_color_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
@@ -226,21 +232,21 @@ int main(int argc, char** argv)
     bool detected = isDetectedForState(target_state);
 
     // 아직 단계 진입 전: 감지되면 시작
-    if (!g_stage_active) {
-      if (detected) {
-        g_stage_active = true;
-        g_stage_start  = ros::Time::now();
-        g_current_state = target_state;
-        if (target_state == MISSION_LABACORN) {
-          ++g_labacorn_pass_count;
-          g_first_sequence_running = false;
-          g_first_sequence_done = false;
+      if (!g_stage_active) {
+        if (detected) {
+          g_stage_active = true;
+          g_stage_start  = ros::Time::now();
+          g_current_state = target_state;
+          if (target_state == MISSION_LABACORN) {
+            ++g_labacorn_pass_count;
+            g_first_sequence_running = false;
+            g_first_sequence_done = false;
+          }
+          ROS_INFO("[main_node] stage %zu START (state=%d)", g_stage_index, g_current_state);
+        } else {
+          g_current_state = MISSION_LANE;  // 기본은 차선 추종
         }
-        ROS_INFO("[main_node] stage %zu START (state=%d)", g_stage_index, g_current_state);
-      } else {
-        g_current_state = MISSION_LANE;  // 기본은 차선 추종
       }
-    }
     // 단계 진행 중
     else {
       g_current_state = target_state;
@@ -275,13 +281,9 @@ int main(int argc, char** argv)
         mission_lane_step();
         break;
 
-      case MISSION_LANE_RIGHT:
-        mission_lane_step();
-        break;
-
       case MISSION_LABACORN:
         if (g_labacorn_pass_count == 1 && !g_first_sequence_done) {
-          // 첫 라바콘: 차선 3초 + AB(좌회전) 8초 하드코딩
+          // 첫 라바콘: 차선 3초 -> AB 하드코딩 8초
           if (!g_first_sequence_running) {
             g_first_sequence_running = true;
             g_first_sequence_start = ros::Time::now();
@@ -290,22 +292,20 @@ int main(int argc, char** argv)
 
           if (seq_elapsed < g_first_lane_duration) {
             mission_lane_step();
-          } else if (seq_elapsed < g_first_lane_duration + g_first_ab_duration) {
-            mission_AB_step(g_first_ab_dir);   // 기본 좌회전(-1), 우회전은 dir=+1로 변경 가능
-          } 
-          // ------
-          else {
-            // 시퀀스 종료 -> 다음 스테이지로 즉시 전환
-            g_first_sequence_done = true;
-            g_first_sequence_running = false;
-            g_stage_active = false;
-            if (g_stage_index + 1 < g_mission_plan.size()) {
-              ++g_stage_index;
-              ROS_INFO("[main_node] first labacorn seq done -> advance to %zu", g_stage_index);
-            } else {
-              ROS_INFO("[main_node] final stage complete, stay on last mission");
+          } else {
+            mission_AB_left_step();
+            if (mission_AB_left_is_done()) {
+              g_first_sequence_done = true;
+              g_first_sequence_running = false;
+              g_stage_active = false;
+              if (g_stage_index + 1 < g_mission_plan.size()) {
+                ++g_stage_index;
+                ROS_INFO("[main_node] first labacorn seq done -> advance to %zu", g_stage_index);
+              } else {
+                ROS_INFO("[main_node] final stage complete, stay on last mission");
+              }
+              g_current_state = MISSION_LANE;
             }
-            g_current_state = MISSION_LANE;
           }
         } else {
           mission_labacorn_step();
@@ -322,10 +322,6 @@ int main(int argc, char** argv)
 
       case MISSION_ROTARY:
         mission_rotary_step();
-        break;
-
-      case MISSION_TURNSIGN:
-        mission_AB_step(g_ab_turn_dir);
         break;
 
       case MISSION_COLOR:

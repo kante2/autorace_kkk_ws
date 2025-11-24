@@ -1,0 +1,4 @@
+<launch>
+  <arg name="bag_file" default="$(find autorace_decision)/src/rosbag/ab_cmd_vel.bag"/>
+  <node pkg="rosbag" type="play" name="ab_bag_play" args="--clock --quiet $(arg bag_file)"/>
+</launch>
