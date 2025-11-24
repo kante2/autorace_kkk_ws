@@ -89,12 +89,12 @@ static void pubGateSign(bool stop)
   if (stop)
   {
     speed_msg.data = g_stop_speed;
-    ROS_INFO_THROTTLE(1.0, "→ GATE DOWN & CLOSE: Stopping");
+    ROS_INFO_THROTTLE(1.0, "GATE DOWN & CLOSE: Stopping");
   }
   else
   {
     speed_msg.data = g_basic_speed;
-    ROS_INFO_THROTTLE(1.0, "→ GATE UP or FAR: Moving forward");
+    ROS_INFO_THROTTLE(1.0, "GATE UP or FAR: Moving forward");
   }
 
   g_pub_speed.publish(speed_msg);
