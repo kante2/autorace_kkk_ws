@@ -1,7 +1,8 @@
-// lane_center_node.cpp
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Polygon.h>
+#include <geometry_msgs/Point32.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <opencv2/opencv.hpp>
@@ -11,36 +12,40 @@
 #include <cmath>
 #include <algorithm>
 
-#include <std_msgs/Float64.h>
-
 // -------------------- 전역 상태 --------------------
-ros::Publisher g_pub_center_point;
-ros::Publisher g_pub_curvature;   // 곡률 퍼블리셔
+ros::Publisher g_pub_center_point;   // 차선 중앙 한 점 (디버그용)
+ros::Publisher g_pub_left_centers;   // 슬라이딩 윈도우 좌측 포인트 목록
+ros::Publisher g_pub_right_centers;  // 슬라이딩 윈도우 우측 포인트 목록
 
 bool g_show_window = true;
-std::string g_win_src = "lane_src_debug";
-std::string g_win_bev = "lane_bev_binary";
+std::string g_win_src = "ab_src_with_roi";
+std::string g_win_bev = "ab_bev_binary_with_windows";
 
 // 파라미터
-double g_lane_width_px = 340.0;
+double g_lane_width_px = 340.0;   // 차선 폭 (px) - 한쪽만 보일 때 center 보정용
 
-int    g_num_windows       = 12;
-int    g_window_margin     = 80;
-int    g_minpix_recenter   = 50;
-int    g_min_lane_sep      = 60;
-double g_center_ema_alpha  = 0.8;
+int    g_num_windows      = 12;
+int    g_window_margin    = 80;
+int    g_minpix_recenter  = 50;
+int    g_min_lane_sep     = 60;
+double g_center_ema_alpha = 0.8;
 
+// ROI 비율 (원본 카메라 프레임 기준)
 double g_roi_top_y_ratio     = 0.60;
 double g_roi_left_top_ratio  = 0.22;
 double g_roi_right_top_ratio = 0.78;
 double g_roi_left_bot_ratio  = -0.40;
 double g_roi_right_bot_ratio = 1.40;
 
-// HSV 범위 (노란 + 흰색 차선)
+// HSV 범위 (노란선 + 흰선)
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
 cv::Scalar g_white_lower(0, 0, 150);
 cv::Scalar g_white_upper(179, 60, 255);
+
+// 송도/대회장 전환용 플래그
+bool g_use_yellow = true;
+bool g_use_white  = true;
 
 // -------------------- 헬퍼 함수들 --------------------
 void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
@@ -100,16 +105,43 @@ cv::Mat binarizeLanes(const cv::Mat& bgr)
   cv::Mat hsv;
   cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
 
-  cv::Mat mask_y, mask_w;
-  cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
-  cv::inRange(hsv, g_white_lower,  g_white_upper,  mask_w);
+  cv::Mat mask_y, mask_w, mask;
 
-  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-  cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
-  cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  // 노란선 사용
+  if (g_use_yellow)
+  {
+    cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
 
-  cv::Mat mask;
-  cv::bitwise_or(mask_y, mask_w, mask);
+  // 흰선 사용
+  if (g_use_white)
+  {
+    cv::inRange(hsv, g_white_lower, g_white_upper, mask_w);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
+
+  // 둘 다 켰을 때
+  if (!mask_y.empty() && !mask_w.empty())
+  {
+    cv::bitwise_or(mask_y, mask_w, mask);
+  }
+  else if (!mask_y.empty())
+  {
+    mask = mask_y;
+  }
+  else if (!mask_w.empty())
+  {
+    mask = mask_w;
+  }
+  else
+  {
+    // 둘 다 false면 그냥 0으로 (아무것도 검출 안 함)
+    mask = cv::Mat::zeros(hsv.size(), CV_8UC1);
+  }
+
   return mask;
 }
 
@@ -329,40 +361,6 @@ bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
   return false;
 }
 
-// 간단한 곡률 계산 (폴리라인의 대표 3점으로 근사)
-double computeCurvatureFromCenters(const std::vector<cv::Point2f>& centers)
-{
-  if (centers.size() < 3) {
-    return 0.0;
-  }
-
-  cv::Point2f p1 = centers.front();
-  cv::Point2f p2 = centers[centers.size() / 2];
-  cv::Point2f p3 = centers.back();
-
-  double x1 = p1.x, y1 = p1.y;
-  double x2 = p2.x, y2 = p2.y;
-  double x3 = p3.x, y3 = p3.y;
-
-  double a = std::hypot(x2 - x1, y2 - y1);
-  double b = std::hypot(x3 - x2, y3 - y2);
-  double c = std::hypot(x3 - x1, y3 - y1);
-
-  double area2 = (x2 - x1)*(y3 - y1) - (y2 - y1)*(x3 - x1); // 2*area with sign
-  double A = std::fabs(area2) * 0.5;
-
-  if (A < 1e-6 || a < 1e-6 || b < 1e-6 || c < 1e-6) {
-    return 0.0;
-  }
-
-  double R = (a * b * c) / (4.0 * A);
-  double kappa = 1.0 / R;
-
-  // 방향에 따라 부호 (좌회전/우회전)
-  double sign = (area2 > 0.0) ? 1.0 : -1.0;
-  return sign * kappa;
-}
-
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -378,7 +376,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     int h = bgr.rows;
     int w = bgr.cols;
 
-    // 카메라 프레임 중심 (디버그)
+    // 카메라 프레임 중심 (디버그용)
     int cx_cam = w / 2;
     int cy_cam = h / 2;
 
@@ -409,7 +407,25 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     runSlidingWindowCollectCenters(bev_binary, debug_img,
                                    left_centers, right_centers);
 
-    // 5) 차선 중심 퍼블리시
+    // 4-1) 좌/우 윈도우 중심 좌표 배열 퍼블리시 (픽셀 단위)
+    auto publish_centers = [](const std::vector<cv::Point2f>& centers,
+                              ros::Publisher& pub)
+    {
+      geometry_msgs::Polygon poly;
+      poly.points.reserve(centers.size());
+      for (const auto& p : centers) {
+        geometry_msgs::Point32 pt;
+        pt.x = p.x;
+        pt.y = p.y;
+        pt.z = 0.0f;
+        poly.points.push_back(pt);
+      }
+      pub.publish(poly);
+    };
+    publish_centers(left_centers,  g_pub_left_centers);
+    publish_centers(right_centers, g_pub_right_centers);
+
+    // 5) 차선 center point (디버그용)
     cv::Point2f center_pt;
     if (computeCenterPoint(left_centers, right_centers, center_pt)) {
       geometry_msgs::PointStamped pt_msg;
@@ -426,18 +442,6 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
                  6, cv::Scalar(255, 0, 255), -1);
     }
 
-    // 6) 곡률 계산 (좌/우 중 포인트 많은 쪽 기준)
-    std::vector<cv::Point2f> lane_pts;
-    if (left_centers.size() >= right_centers.size())
-      lane_pts = left_centers;
-    else
-      lane_pts = right_centers;
-
-    double curvature = computeCurvatureFromCenters(lane_pts);
-    std_msgs::Float64 curv_msg;
-    curv_msg.data = curvature;
-    g_pub_curvature.publish(curv_msg);
-
     // 디버그 텍스트
     auto put = [&](const std::string& txt, int y)
     {
@@ -447,9 +451,8 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     };
     put("Left centers:  " + std::to_string(left_centers.size()), 24);
     put("Right centers: " + std::to_string(right_centers.size()), 48);
-    put("Curvature (px^-1): " + std::to_string(curvature), 72);
 
-    // 7) 화면 출력
+    // 6) 화면 출력
     if (g_show_window) {
       cv::Mat canvas;
       cv::Mat src_resized, dbg_resized;
@@ -463,20 +466,20 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     }
 
   } catch (const cv_bridge::Exception& e) {
-    ROS_WARN("[lane_center_node] cv_bridge exception: %s", e.what());
+    ROS_WARN("[lane_ab_node] cv_bridge exception: %s", e.what());
   } catch (const cv::Exception& e) {
-    ROS_WARN("[lane_center_node] OpenCV exception: %s", e.what());
+    ROS_WARN("[lane_ab_node] OpenCV exception: %s", e.what());
   } catch (const std::exception& e) {
-    ROS_WARN("[lane_center_node] std::exception: %s", e.what());
+    ROS_WARN("[lane_ab_node] std::exception: %s", e.what());
   } catch (...) {
-    ROS_WARN("[lane_center_node] unknown exception");
+    ROS_WARN("[lane_ab_node] unknown exception");
   }
 }
 
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "lane_center_node");
+  ros::init(argc, argv, "lane_ab_node");
   ros::NodeHandle nh;      // global
   ros::NodeHandle pnh("~");// private
 
@@ -496,11 +499,23 @@ int main(int argc, char** argv)
   pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
   pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
 
-  // Pub/Sub
-  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+  // 송도/대회장 전환용 플래그
+  //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
+  //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, true);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  false);
 
-  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
-  g_pub_curvature    = nh.advertise<std_msgs::Float64>("/perception/curvature_center", 1);
+  // Sub
+  ros::Subscriber img_sub =
+      nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+
+  // Pub (AB 제어 노드와 동일 토픽 이름)
+  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>(
+                         "/perception/center_point_px", 1);
+  g_pub_left_centers  = nh.advertise<geometry_msgs::Polygon>(
+                         "/perception/left_window_centers_px", 1);
+  g_pub_right_centers = nh.advertise<geometry_msgs::Polygon>(
+                         "/perception/right_window_centers_px", 1);
 
   if (g_show_window) {
     cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
@@ -509,7 +524,10 @@ int main(int argc, char** argv)
     cv::resizeWindow(g_win_bev, 960, 540);
   }
 
-  ROS_INFO("lane_center_node running...");
+  ROS_INFO("lane_ab_node running...");
+  ROS_INFO("  use_yellow_lanes = %s", g_use_yellow ? "true" : "false");
+  ROS_INFO("  use_white_lanes  = %s", g_use_white  ? "true" : "false");
+
   ros::spin();
   return 0;
 }

@@ -69,3 +69,11 @@ target_link_libraries(leftright_imagetest
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )
+
+add_executable(mission_ab_control
+  src/mission_ab_control.cpp
+)
+target_link_libraries(mission_ab_control
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)

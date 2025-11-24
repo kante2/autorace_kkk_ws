@@ -84,6 +84,16 @@ add_wego_node(lane_node
   src/camera/lane_mission/lane_node.cpp
 )
 
+# Crosswalk perception node
+add_wego_node(crosswalk_node
+  src/camera/crosswalk_mission/crosswalk_node.cpp
+)
+
+# AB perception node
+add_wego_node(ab_node
+  src/camera/ab_mission/ab_node.cpp
+)
+
 # Gate mission lidar node
 add_wego_node(gate_node
   src/lidar/gate_mission/gate_node.cpp
@@ -108,6 +118,7 @@ add_wego_node(labacorn_node
   src/lidar/labacorn_mission/labacorn_node.cpp
   src/lidar/labacorn_mission/lidar_preprocessing_labacorn.cpp
 )
+
 
 ## 나중에 새 노드 추가할 때는 밑에 한 줄만 추가:
 ## add_wego_node(새노드이름_node src/새파일이름.cpp)
