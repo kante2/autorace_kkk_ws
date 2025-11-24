@@ -21,7 +21,6 @@
   <build_depend>tf2_geometry_msgs</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>visualization_msgs</build_depend>
-  <build_depend>autorace_perception</build_depend>
   <!-- 새로 추가 -->
   <build_depend>autorace_control</build_depend>
   <build_depend>rosbag</build_depend>
@@ -41,7 +40,6 @@
   <build_export_depend>tf2_geometry_msgs</build_export_depend>
   <build_export_depend>tf2_ros</build_export_depend>
   <build_export_depend>visualization_msgs</build_export_depend>
-  <build_export_depend>autorace_perception</build_export_depend>
   <!-- 새로 추가 -->
   <build_export_depend>autorace_control</build_export_depend>
   <build_export_depend>rosbag</build_export_depend>
@@ -61,7 +59,6 @@
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
-  <exec_depend>autorace_perception</exec_depend>
   <!-- 새로 추가 -->
   <exec_depend>autorace_control</exec_depend>
   <exec_depend>rosbag</exec_depend>

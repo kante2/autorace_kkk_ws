@@ -12,7 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   visualization_msgs
-  autorace_perception
   laser_geometry
   tf2
   tf2_ros
@@ -33,7 +32,6 @@ catkin_package(
   visualization_msgs
   image_transport
   cv_bridge
-  autorace_perception
   autorace_control   # ★ 네가 적어둔 것 유지
   rosbag             # ★ 유지
   laser_geometry     # ★ 유지

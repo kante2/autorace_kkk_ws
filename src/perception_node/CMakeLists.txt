@@ -87,7 +87,6 @@ add_wego_node(lane_node
 # Gate mission lidar node
 add_wego_node(gate_node
   src/lidar/gate_mission/gate_node.cpp
-  src/lidar/gate_mission/lidar_preprocessing_gate.cpp
 )
 
 # Rotary mission lidar node

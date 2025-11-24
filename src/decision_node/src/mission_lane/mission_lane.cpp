@@ -37,11 +37,14 @@ static double g_servo_max    = 1.0;            // [MOD-static]
 static double g_steer_sign   = -1.0;           // [MOD-static]
 
 // Control 파라미터
-static double g_max_abs_dx_px = 83.0;          // [MOD-static]
-static double g_dx_tolerance  = 3.0;           // [MOD-static]
-static double g_steer_gain    = 1.5;           // [MOD-static]
-static double g_alpha_ema     = 0.2;           // [MOD-static]
-static double g_max_delta     = 0.08;          // [MOD-static]
+static double g_max_abs_dx_px   = 83.0;          // [MOD-static]
+static double g_dx_tolerance    = 3.0;           // [MOD-static]
+static double g_steer_gain_base = 1.5;           // 곡률 반영 전 기본 gain [MOD-static]
+static double g_steer_gain_min  = 0.8;           // 직선 부근에서 최소 gain [MOD-static]
+static double g_steer_gain_max  = 2.0;           // 급커브에서 최대 gain [MOD-static]
+static double g_steer_gain      = 1.5;           // 실제 사용 gain (매 프레임 갱신) [MOD-static]
+static double g_alpha_ema       = 0.2;           // [MOD-static]
+static double g_max_delta       = 0.08;          // [MOD-static]
 
 // 속도 계획
 static double g_base_speed_mps  = 7.0;         // [MOD-static]
@@ -79,8 +82,8 @@ static bool      g_crosswalk_timer_running = false;   // [MOD-static]
 static ros::Time g_crosswalk_start_time;              // [MOD-static]
 
 // 곡률 범위 파라미터
-static double g_min_curv = 3e-4;              // [MOD-static]
-static double g_max_curv = 1.5e-3;            // [MOD-static]
+static double g_min_curv = 3e-6;              // [MOD-static]
+static double g_max_curv = 1e-3;              // [MOD-static]
 
 // PID 파라미터
 static double g_pid_kp = 0.02;               // 1124 새로추가 [MOD-static]
@@ -96,6 +99,10 @@ static bool g_pid_has_prev_t = false;        // 1124 새로추가 [MOD-static]
 
 // 색상 정보
 static int g_lane_color_code = 0;            // 0 none, 1 red, 2 blue // 1124 새로추가 [MOD-static]
+
+// dx 스파이크 필터 // 1124 새로추가
+static double g_prev_dx = 0.0;               // [MOD-static]
+static bool   g_has_prev_dx = false;         // [MOD-static]
 
 // -------------------- PID 한 스텝 계산 --------------------
 static double runPID(double error)            // 1124 새로추가 [MOD-static]
@@ -181,7 +188,16 @@ static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg) // [MOD-s
   g_have_cb_time = true;
 
   double cx = msg->point.x;
-  double dx = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
+  double dx_raw = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
+
+  // 급점프 프레임 차단 // 1124 새로추가
+  double dx = dx_raw;
+  const double spike_thresh = 80.0; // px 기준
+  if (g_has_prev_dx && std::fabs(dx_raw - g_prev_dx) > spike_thresh) {
+    dx = g_prev_dx;   // 급점프 프레임 완전 무시
+  }
+  g_prev_dx = dx;
+  g_has_prev_dx = true;
 
   processDx(dx);
 }
@@ -201,30 +217,29 @@ static void centerColorCB(const geometry_msgs::PointStamped::ConstPtr& msg) // 1
 // -------------------- 콜백: curvature_center --------------------
 static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg) // [MOD-static]
 {
-  double center_curv = msg->data;
+  double curv = msg->data;          // 부호는 좌/우 구분, 여기서는 크기만 사용
+  double k = std::fabs(curv);
 
-  double denom = (g_max_curv - g_min_curv);
-  if (denom == 0.0) {
-    ROS_WARN_THROTTLE(1.0, "[lane_ctrl] (max_curv - min_curv) == 0, skip curvature scaling");
+  if (g_max_curv <= g_min_curv) {
+    ROS_WARN_THROTTLE(1.0,
+      "[lane_ctrl] invalid curvature range (min >= max), use base gain");
+    g_steer_gain = g_steer_gain_base;
     return;
   }
 
-  if (center_curv > g_max_curv) {
-    double ratio = (center_curv - g_max_curv) / denom;
-    g_steer_gain = g_steer_gain * 1.0 + ratio;
-  }
-  else if (center_curv < g_min_curv) {
-    double ratio = (g_max_curv - center_curv) / denom;
-    g_steer_gain = g_steer_gain * ratio;
-  }
-  else {
-    double ratio = (g_max_curv - center_curv) / denom;
-    g_steer_gain = g_steer_gain * ratio;
-  }
+  // 1) 곡률 크기 클램프
+  double k_clamped = clamp(k, g_min_curv, g_max_curv);
+
+  // 2) 0~1 노멀라이즈
+  double t = (k_clamped - g_min_curv) / (g_max_curv - g_min_curv);
+  t = clamp(t, 0.0, 1.0);
+
+  // 3) 보간하여 현재 steer_gain 계산 (누적X, 매번 계산)
+  g_steer_gain = g_steer_gain_min + t * (g_steer_gain_max - g_steer_gain_min);
 
   ROS_INFO_THROTTLE(0.5,
-    "[lane_ctrl] center_curv=%.4e (min=%.4e, max=%.4e) -> steer_gain=%.3f",
-    center_curv, g_min_curv, g_max_curv, g_steer_gain);
+    "[lane_ctrl] center_curv=%.4e |k|=%.4e t=%.3f -> steer_gain=%.3f (range=%.3f~%.3f)",
+    curv, k, t, g_steer_gain, g_steer_gain_min, g_steer_gain_max);
 }
 
 
@@ -285,9 +300,12 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
   // Control params
-  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 83.0); // 83,
-  pnh.param<double>("dx_tolerance",  g_dx_tolerance,  3.0);
-  pnh.param<double>("steer_gain",    g_steer_gain,    0.8); // 초기 steer_gain
+  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 75.0); // 83,
+  pnh.param<double>("dx_tolerance",  g_dx_tolerance,  8.0);
+  pnh.param<double>("steer_gain",        g_steer_gain_base, 0.8);  // 기본 gain
+  pnh.param<double>("steer_gain_min",    g_steer_gain_min,  0.6);  // 곡률 최소 구간 gain
+  pnh.param<double>("steer_gain_max",    g_steer_gain_max,  2.2);  // 곡률 최대 구간 gain
+  g_steer_gain = g_steer_gain_base; // 초기값
   pnh.param<double>("steer_smoothing_alpha", g_alpha_ema, 0.2);
   pnh.param<double>("max_steer_delta_per_cycle", g_max_delta, 0.08);
 
@@ -305,14 +323,14 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("pid_kp", g_pid_kp, 0.01); // 1124 새로추가
   pnh.param<double>("pid_ki", g_pid_ki, 0.0);  // 1124 새로추가
   pnh.param<double>("pid_kd", g_pid_kd, 0.0001); // 1124 새로추가
-  pnh.param<double>("pid_weight", g_pid_weight, 0.05); // 1124 새로추가
+  pnh.param<double>("pid_weight", g_pid_weight, 0.00); // 1124 새로추가
 
   // 타임아웃
   pnh.param<double>("dx_timeout_sec", g_dx_timeout_sec, 1.0);
 
   // 곡률 범위 파라미터
-  pnh.param<double>("min_curvature", g_min_curv, 0.0);
-  pnh.param<double>("max_curvature", g_max_curv, 0.01);
+  pnh.param<double>("min_curvature", g_min_curv, 3e-6);
+  pnh.param<double>("max_curvature", g_max_curv, 1e-3);
 
   // --- Pub/Sub ---
   g_center_sub    = nh.subscribe(g_topic_center_point,     20, centerCB);

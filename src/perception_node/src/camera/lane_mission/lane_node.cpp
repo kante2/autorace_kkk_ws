@@ -51,8 +51,8 @@ int g_mission1_min_pixel = 500;
 // HSV 범위
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
-cv::Scalar g_white_lower(0, 0, 150);
-cv::Scalar g_white_upper(179, 80, 255);
+cv::Scalar g_white_lower(0, 0, 175);
+cv::Scalar g_white_upper(179, 40, 255);
 
 // 빨강(두 구간) + 파랑
 cv::Scalar g_red_lower1(0,   80, 80);
@@ -264,13 +264,7 @@ cv::Mat binarizeWhiteLanes(const cv::Mat& bgr)
   cv::inRange(hsv, g_white_lower, g_white_upper, mask_w);
 
   cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-    // ▶▶ 중요: CLOSE로 끊긴 부분을 먼저 이어줌
-  cv::morphologyEx(mask_w, mask_w, cv::MORPH_CLOSE, kernel);
-
-  // ▶ 노이즈 제거는 마지막에 OPEN
-  cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel);
-
-  // cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
   return mask_w;
 }
 
@@ -665,10 +659,10 @@ int main(int argc, char** argv)
   pnh.param<double>("lane_width_px", g_lane_width_px, 340.0);
 
   pnh.param<int>("num_windows",      g_num_windows,      12);
-  pnh.param<int>("window_margin",    g_window_margin,    90); // 80 → 90 (더 넓게 잡기)
-  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  20); // 50 → 20 (한 프레임 놓치지 않도록)
-  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     50); // 60 → 50 (실제 차선 간격 350에 맞춰)
-  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.6); // 0.8 → 0.6 (더 빠르게 원래 위치로 복귀)
+  pnh.param<int>("window_margin",    g_window_margin,    80);
+  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  50);
+  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     80); // 60 -> 80
+  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.8);
 
   pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
   pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.10);
@@ -682,7 +676,7 @@ int main(int argc, char** argv)
   pnh.param<double>("stop_duration",        g_stop_duration,        7.0);
 
   // Pub/Sub
-  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 1, imageCB);
 
   g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
   g_pub_center_color = nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1); // 0=none,1=red,2=blue
