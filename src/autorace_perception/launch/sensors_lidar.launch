@@ -1,0 +1,30 @@
+<launch>
+  <!-- RPLIDAR bringup -->
+  <include file="$(find rplidar_ros)/launch/rplidar_s1.launch">
+    <!-- 예시 인자: 필요 시 수정 -->
+    <!-- <arg name="serial_port" value="/dev/ttyUSB0"/> -->
+    <!-- <arg name="serial_baudrate" value="256000"/> -->
+    <!-- <arg name="frame_id" value="laser"/> -->
+  </include>
+
+  <!-- 기본 라바콘 감지 -->
+  <node name="cluster_detect_lidar"
+        pkg="autorace_perception"
+        type="cluster_detect_lidar"
+        output="screen">
+    <param name="scan_topic" value="/scan"/>
+    <param name="cloud_topic" value="/scan_points"/>
+    <param name="marker_topic" value="/labacorn_clusters"/>
+    <param name="detected_topic" value="/labacorn_detected"/>
+  </node>
+
+  <!-- 로터리 전용 감지 -->
+  <node name="rotary_detect_lidar"
+        pkg="autorace_perception"
+        type="rotary_detect_lidar"
+        output="screen">
+    <param name="scan_topic" value="/scan"/>
+    <param name="detected_topic" value="/rotary_detected"/>
+    <param name="marker_topic" value="rotary/obstacle_markers"/>
+  </node>
+</launch>

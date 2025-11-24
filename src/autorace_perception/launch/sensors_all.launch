@@ -1,0 +1,7 @@
+<launch>
+  <!-- Camera bringup -->
+  <include file="$(find autorace_perception)/launch/sensors_camera.launch"/>
+
+  <!-- Lidar bringup + 감지 -->
+  <include file="$(find autorace_perception)/launch/sensors_lidar.launch"/>
+</launch>
