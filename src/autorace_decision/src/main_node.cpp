@@ -26,11 +26,6 @@ void mission_crosswalk_step();
 void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_rotary_step();
 
-// mission_AB_toMain.cpp (YOLO 좌/우 표지판 회전 미션)
-void mission_AB_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
-// dir: -1 = LEFT, +1 = RIGHT, 0 = NONE
-void mission_AB_step(int turn_dir);
-bool mission_AB_is_done();
 // mission_AB_left_toMain.cpp (왼쪽 차선 8초 추종)
 void mission_AB_left_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_AB_left_step();
@@ -211,7 +206,6 @@ int main(int argc, char** argv)
   mission_gate_init(nh, pnh);
   mission_crosswalk_init(nh, pnh);
   mission_rotary_init(nh, pnh);
-  mission_AB_init(nh, pnh);
   mission_AB_left_init(nh, pnh);
   mission_color_init(nh, pnh);
 

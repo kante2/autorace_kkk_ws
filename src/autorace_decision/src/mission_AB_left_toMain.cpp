@@ -51,8 +51,8 @@ static double g_speed_drop_gain = 0.5;
 
 // 모터 스케일
 static double g_motor_min_cmd = 0.0;
-static double g_motor_max_cmd = 900.0;
-static double g_motor_gain    = 300.0;
+static double g_motor_max_cmd = 1200.0;
+static double g_motor_gain    = 500.0;
 
 // 타임아웃
 static double g_dx_timeout_sec = 1.0;

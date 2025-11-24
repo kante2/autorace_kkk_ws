@@ -24,12 +24,12 @@ static double g_steer_sign   = -1.0;
 // 속도/모터 스케일
 static double g_go_speed_mps   = 2.0;   // 횡단보도 통과할 때 직진 속도
 static double g_motor_min_cmd  = 0.0;
-static double g_motor_max_cmd  = 900.0;
-static double g_motor_gain     = 300.0;
+static double g_motor_max_cmd  = 1200.0;
+static double g_motor_gain     = 500.0;
 
 // 타이밍 (초)
 static double g_stop_duration_sec = 7.0;  // 정지 시간
-static double g_go_duration_sec   = 2.0;  // 직진 시간
+static double g_go_duration_sec   = 1.5;  // 직진 시간
 
 // 퍼블리셔
 static ros::Publisher g_pub_motor;
