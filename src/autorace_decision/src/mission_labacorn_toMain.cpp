@@ -53,7 +53,7 @@ static laser_geometry::LaserProjection g_projector;
 // -------------------- 전역 파라미터 --------------------
 // DBSCAN / ROI 파라미터
 static double g_eps           = 0.2;
-static int    g_min_samples   = 4;
+static int    g_min_samples   = 2;   // labacorn_check 기본값에 맞춤
 static double g_range_min     = 0.13;
 static double g_range_max     = 0.9;
 static double g_front_min_deg = 60.0;
@@ -62,8 +62,8 @@ static double g_lane_offset_y = 0.12;   // 한쪽만 있을 때 중심 보정량
 
 // 조향/속도 파라미터
 static double g_k_yaw            = 0.8;   // yaw -> 조향 gain
-static double g_follow_speed_mps = 1.0;   // 타겟 있을 때 속도 (m/s)
-static double g_min_speed_mps    = 0.7;   // (필요시 사용)
+static double g_follow_speed_mps = 0.733;   // labacorn_check: 1100/1500 ≈ 0.733 m/s
+static double g_min_speed_mps    = 0.6;     // labacorn_check: 900/1500 = 0.6 m/s
 
 // 서보/모터 파라미터
 static double g_servo_center = 0.5;
@@ -320,7 +320,7 @@ static void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   if (points.empty())
   {
     g_have_target = false;
-    ROS_INFO_THROTTLE(1.0, "[cluster_follower] No valid points in ROI");
+    ROS_INFO_THROTTLE(1.0, "[cluster_follower] No valid points in ROI -> slow forward");
     return;
   }
 
@@ -334,7 +334,7 @@ static void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   if (!computeTargetFromCenters(centers, target_x, target_y))
   {
     g_have_target = false;
-    ROS_INFO_THROTTLE(1.0, "[cluster_follower] No clusters -> no target");
+    ROS_INFO_THROTTLE(1.0, "[cluster_follower] No clusters -> slow forward");
     return;
   }
 
@@ -391,8 +391,8 @@ void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   // 조향/속도
   pnh.param<double>("yaw_gain",          g_k_yaw,            0.8);
-  pnh.param<double>("follow_speed_mps",  g_follow_speed_mps, 1.0);
-  pnh.param<double>("min_speed_mps",     g_min_speed_mps,    0.7);
+  pnh.param<double>("follow_speed_mps",  g_follow_speed_mps, 0.733);
+  pnh.param<double>("min_speed_mps",     g_min_speed_mps,    0.6);
 
   // 서보/모터
   pnh.param<double>("servo_center", g_servo_center, 0.5);
@@ -445,20 +445,13 @@ void mission_labacorn_step()
   }
   else
   {
-    // 스캔이 없거나 타겟이 없을 때: 일단 정지
+    // 스캔 없거나 타겟 없을 때: 느리게 직진
     steer_cmd = 0.0;
-    speed_cmd = 0.0;
+    speed_cmd = g_min_speed_mps;
 
-    if (!have_scan)
-    {
-      ROS_INFO_THROTTLE(1.0,
-        "[cluster_follower] waiting LaserScan... (timeout)");
-    }
-    else
-    {
-      ROS_INFO_THROTTLE(1.0,
-        "[cluster_follower] have_scan but no target -> stop");
-    }
+    ROS_INFO_THROTTLE(1.0,
+      "[cluster_follower] fallback -> slow forward (have_scan=%d, have_target=%d)",
+      (int)have_scan, (int)g_have_target);
   }
 
   // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
