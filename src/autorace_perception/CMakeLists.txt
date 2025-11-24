@@ -86,6 +86,8 @@ endfunction()
 
 # === lane_kante_wego ===
 add_wego_node(lane_kante_wego_node src/camera/lane_kante_wego.cpp)
+add_wego_node(cross_walk_node src/camera/crosswalk_node.cpp)
+add_wego_node(lane_center_node src/camera/lane_center_node.cpp)
 add_wego_node(cluster_detect_lidar src/lidar/cluster_detect_lidar.cpp)
 add_wego_node(rotary_detect_lidar src/lidar/rotary_detect_lidar.cpp)
 
