@@ -1,0 +1,4 @@
+<node pkg="perception_node" type="ab_node" name="ab_node" output="screen">
+  <param name="use_yellow_lanes" value="false"/>
+  <param name="use_white_lanes"  value="true"/>
+</node>
