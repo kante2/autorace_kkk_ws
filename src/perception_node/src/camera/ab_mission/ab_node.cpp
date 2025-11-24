@@ -1,0 +1,532 @@
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+#include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Polygon.h>
+#include <geometry_msgs/Point32.h>
+#include <cv_bridge/cv_bridge.h>
+
+#include <opencv2/opencv.hpp>
+
+#include <string>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
+// -------------------- 전역 상태 --------------------
+ros::Publisher g_pub_center_point;   // 차선 중앙 한 점 (디버그용)
+ros::Publisher g_pub_left_centers;   // 슬라이딩 윈도우 좌측 포인트 목록
+ros::Publisher g_pub_right_centers;  // 슬라이딩 윈도우 우측 포인트 목록
+
+bool g_show_window = true;
+std::string g_win_src = "ab_src_with_roi";
+std::string g_win_bev = "ab_bev_binary_with_windows";
+
+// 파라미터
+double g_lane_width_px = 340.0;   // 차선 폭 (px) - 한쪽만 보일 때 center 보정용
+
+int    g_num_windows      = 12;
+int    g_window_margin    = 80;
+int    g_minpix_recenter  = 50;
+int    g_min_lane_sep     = 60;
+double g_center_ema_alpha = 0.8;
+
+// ROI 비율 (원본 카메라 프레임 기준)
+double g_roi_top_y_ratio     = 0.60;
+double g_roi_left_top_ratio  = 0.22;
+double g_roi_right_top_ratio = 0.78;
+double g_roi_left_bot_ratio  = -0.40;
+double g_roi_right_bot_ratio = 1.40;
+
+// HSV 범위 (노란선 + 흰선)
+cv::Scalar g_yellow_lower(10, 80, 60);
+cv::Scalar g_yellow_upper(45, 255, 255);
+cv::Scalar g_white_lower(0, 0, 150);
+cv::Scalar g_white_upper(179, 60, 255);
+
+bool g_use_yellow = false;
+bool g_use_white  = true;
+
+// -------------------- 헬퍼 함수들 --------------------
+void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
+{
+  int y_top = static_cast<int>(h * g_roi_top_y_ratio);
+  int y_bot = h - 1;
+  int x_lt  = static_cast<int>(w * g_roi_left_top_ratio);
+  int x_rt  = static_cast<int>(w * g_roi_right_top_ratio);
+  int x_lb  = static_cast<int>(w * g_roi_left_bot_ratio);
+  int x_rb  = static_cast<int>(w * g_roi_right_bot_ratio);
+
+  poly_out.clear();
+  poly_out.emplace_back(x_lb, y_bot);
+  poly_out.emplace_back(x_lt, y_top);
+  poly_out.emplace_back(x_rt, y_top);
+  poly_out.emplace_back(x_rb, y_bot);
+}
+
+cv::Mat warpToBev(const cv::Mat& bgr, const std::vector<cv::Point>& roi_poly)
+{
+  int h = bgr.rows;
+  int w = bgr.cols;
+
+  cv::Point2f BL = roi_poly[0];
+  cv::Point2f TL = roi_poly[1];
+  cv::Point2f TR = roi_poly[2];
+  cv::Point2f BR = roi_poly[3];
+
+  // y를 프레임 안으로 클리핑
+  BL.y = std::max(0.f, std::min(static_cast<float>(h - 1), BL.y));
+  TL.y = std::max(0.f, std::min(static_cast<float>(h - 1), TL.y));
+  TR.y = std::max(0.f, std::min(static_cast<float>(h - 1), TR.y));
+  BR.y = std::max(0.f, std::min(static_cast<float>(h - 1), BR.y));
+
+  std::vector<cv::Point2f> src, dst;
+  src.push_back(BL);
+  src.push_back(TL);
+  src.push_back(TR);
+  src.push_back(BR);
+
+  dst.push_back(cv::Point2f(0,     h - 1));
+  dst.push_back(cv::Point2f(0,     0));
+  dst.push_back(cv::Point2f(w - 1, 0));
+  dst.push_back(cv::Point2f(w - 1, h - 1));
+
+  cv::Mat M = cv::getPerspectiveTransform(src, dst);
+  cv::Mat bev;
+  cv::warpPerspective(bgr, bev, M, cv::Size(w, h),
+                      cv::INTER_LINEAR,
+                      cv::BORDER_CONSTANT,
+                      cv::Scalar(0, 0, 0));
+  return bev;
+}
+
+cv::Mat binarizeLanes(const cv::Mat& bgr)
+{
+  cv::Mat hsv;
+  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
+
+  cv::Mat mask_y, mask_w, mask;
+
+  // 노란선 사용
+  if (g_use_yellow)
+  {
+    cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
+
+  // 흰선 사용
+  if (g_use_white)
+  {
+    cv::inRange(hsv, g_white_lower, g_white_upper, mask_w);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
+
+  // 둘 다 켰을 때
+  if (!mask_y.empty() && !mask_w.empty())
+  {
+    cv::bitwise_or(mask_y, mask_w, mask);
+  }
+  else if (!mask_y.empty())
+  {
+    mask = mask_y;
+  }
+  else if (!mask_w.empty())
+  {
+    mask = mask_w;
+  }
+  else
+  {
+    // 둘 다 false면 그냥 0으로 (아무것도 검출 안 함)
+    mask = cv::Mat::zeros(hsv.size(), CV_8UC1);
+  }
+
+  return mask;
+}
+
+void runSlidingWindowCollectCenters(const cv::Mat& binary_mask,
+                                    cv::Mat& debug_img,
+                                    std::vector<cv::Point2f>& left_window_centers,
+                                    std::vector<cv::Point2f>& right_window_centers)
+{
+  int h = binary_mask.rows;
+  int w = binary_mask.cols;
+
+  cv::cvtColor(binary_mask, debug_img, cv::COLOR_GRAY2BGR);
+
+  // 하단 절반 히스토그램
+  cv::Mat lower = binary_mask.rowRange(h / 2, h);
+  cv::Mat hist;
+  cv::reduce(lower, hist, 0, cv::REDUCE_SUM, CV_32S);  // 1 x w
+
+  int midpoint   = w / 2;
+  int left_base  = -1;
+  int right_base = -1;
+
+  // left_base
+  {
+    int max_val = 0;
+    for (int x = 0; x < midpoint; ++x) {
+      int v = hist.at<int>(0, x);
+      if (v > max_val) {
+        max_val = v;
+        left_base = x;
+      }
+    }
+  }
+  // right_base
+  {
+    int max_val = 0;
+    for (int x = midpoint; x < w; ++x) {
+      int v = hist.at<int>(0, x);
+      if (v > max_val) {
+        max_val = v;
+        right_base = x;
+      }
+    }
+  }
+
+  int window_height = h / g_num_windows;
+  int left_current  = left_base;
+  int right_current = right_base;
+
+  std::vector<cv::Point> nz_pts;
+  cv::findNonZero(binary_mask, nz_pts);  // (x,y)
+
+  left_window_centers.clear();
+  right_window_centers.clear();
+
+  std::vector<int> left_indices;
+  std::vector<int> right_indices;
+
+  for (int win = 0; win < g_num_windows; ++win) {
+    int y_low  = h - (win + 1) * window_height;
+    int y_high = h - win * window_height;
+
+    // 창 그리기
+    if (left_current >= 0) {
+      cv::rectangle(debug_img,
+                    cv::Point(left_current - g_window_margin, y_low),
+                    cv::Point(left_current + g_window_margin, y_high),
+                    cv::Scalar(255, 0, 0), 2);
+    }
+    if (right_current >= 0) {
+      cv::rectangle(debug_img,
+                    cv::Point(right_current - g_window_margin, y_low),
+                    cv::Point(right_current + g_window_margin, y_high),
+                    cv::Scalar(255, 0, 0), 2);
+    }
+
+    std::vector<int> good_left;
+    std::vector<int> good_right;
+
+    for (size_t i = 0; i < nz_pts.size(); ++i) {
+      int px = nz_pts[i].x;
+      int py = nz_pts[i].y;
+
+      if (py >= y_low && py < y_high) {
+        if (left_current >= 0 &&
+            px >= left_current - g_window_margin &&
+            px <  left_current + g_window_margin) {
+          good_left.push_back(static_cast<int>(i));
+        }
+        if (right_current >= 0 &&
+            px >= right_current - g_window_margin &&
+            px <  right_current + g_window_margin) {
+          good_right.push_back(static_cast<int>(i));
+        }
+      }
+    }
+
+    // 좌/우 너무 붙으면 한쪽 억제
+    if (left_current >= 0 && right_current >= 0) {
+      if (std::abs(left_current - right_current) < g_min_lane_sep) {
+        if (good_left.size() < good_right.size()) {
+          good_left.clear();
+        } else {
+          good_right.clear();
+        }
+      }
+    }
+
+    left_indices.insert(left_indices.end(),  good_left.begin(),  good_left.end());
+    right_indices.insert(right_indices.end(), good_right.begin(), good_right.end());
+
+    int y_center = (y_low + y_high) / 2;
+
+    // left
+    if (!good_left.empty()) {
+      double sum_x = 0.0;
+      for (int idx : good_left) sum_x += nz_pts[idx].x;
+      double x_mean_left = sum_x / good_left.size();
+      left_window_centers.emplace_back(static_cast<float>(x_mean_left),
+                                       static_cast<float>(y_center));
+      cv::circle(debug_img,
+                 cv::Point(static_cast<int>(x_mean_left), y_center),
+                 4, cv::Scalar(0, 0, 255), -1);
+    }
+    // right
+    if (!good_right.empty()) {
+      double sum_x = 0.0;
+      for (int idx : good_right) sum_x += nz_pts[idx].x;
+      double x_mean_right = sum_x / good_right.size();
+      right_window_centers.emplace_back(static_cast<float>(x_mean_right),
+                                        static_cast<float>(y_center));
+      cv::circle(debug_img,
+                 cv::Point(static_cast<int>(x_mean_right), y_center),
+                 4, cv::Scalar(0, 255, 255), -1);
+    }
+
+    // EMA 업데이트
+    if (!good_left.empty() && left_current >= 0) {
+      double sum_x = 0.0;
+      for (int idx : good_left) sum_x += nz_pts[idx].x;
+      double mean_x = sum_x / good_left.size();
+      left_current = static_cast<int>(g_center_ema_alpha * left_current +
+                                      (1.0 - g_center_ema_alpha) * mean_x);
+    }
+    if (!good_right.empty() && right_current >= 0) {
+      double sum_x = 0.0;
+      for (int idx : good_right) sum_x += nz_pts[idx].x;
+      double mean_x = sum_x / good_right.size();
+      right_current = static_cast<int>(g_center_ema_alpha * right_current +
+                                       (1.0 - g_center_ema_alpha) * mean_x);
+    }
+  }
+
+  // 색칠 (디버그)
+  for (int idx : left_indices) {
+    int px = std::max(0, std::min(w - 1, nz_pts[idx].x));
+    int py = std::max(0, std::min(h - 1, nz_pts[idx].y));
+    debug_img.at<cv::Vec3b>(py, px) = cv::Vec3b(0, 0, 255);
+  }
+  for (int idx : right_indices) {
+    int px = std::max(0, std::min(w - 1, nz_pts[idx].x));
+    int py = std::max(0, std::min(h - 1, nz_pts[idx].y));
+    debug_img.at<cv::Vec3b>(py, px) = cv::Vec3b(0, 255, 0);
+  }
+}
+
+bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
+                        const std::vector<cv::Point2f>& right_window_centers,
+                        cv::Point2f& center_out)
+{
+  auto side_mean = [](const std::vector<cv::Point2f>& centers,
+                      double& y_mean, double& x_mean) -> bool
+  {
+    if (centers.empty()) return false;
+    double sy = 0.0, sx = 0.0;
+    for (const auto& p : centers) {
+      sx += p.x;
+      sy += p.y;
+    }
+    y_mean = sy / centers.size();
+    x_mean = sx / centers.size();
+    return true;
+  };
+
+  double left_y = 0.0, left_x = 0.0;
+  double right_y = 0.0, right_x = 0.0;
+
+  bool has_left  = side_mean(left_window_centers,  left_y,  left_x);
+  bool has_right = side_mean(right_window_centers, right_y, right_x);
+
+  double half_w = 0.5 * g_lane_width_px;
+
+  if (has_left && has_right) {
+    double cy = 0.5 * (left_y + right_y);
+    double cx = 0.5 * (left_x + right_x);
+    center_out = cv::Point2f(static_cast<float>(cx),
+                             static_cast<float>(cy));
+    return true;
+  }
+
+  if (has_left) {
+    double cy = left_y;
+    double cx = left_x + half_w;
+    center_out = cv::Point2f(static_cast<float>(cx),
+                             static_cast<float>(cy));
+    return true;
+  }
+
+  if (has_right) {
+    double cy = right_y;
+    double cx = right_x - half_w;
+    center_out = cv::Point2f(static_cast<float>(cx),
+                             static_cast<float>(cy));
+    return true;
+  }
+
+  return false;
+}
+
+// -------------------- 콜백 --------------------
+void imageCB(const sensor_msgs::ImageConstPtr& msg)
+{
+  try {
+    cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
+    cv::Mat bgr = cv_ptr->image.clone();
+    if (bgr.empty()) return;
+
+    if (bgr.channels() == 1) {
+      cv::cvtColor(bgr, bgr, cv::COLOR_GRAY2BGR);
+    }
+
+    int h = bgr.rows;
+    int w = bgr.cols;
+
+    // 카메라 프레임 중심 (디버그용)
+    int cx_cam = w / 2;
+    int cy_cam = h / 2;
+
+    // 1) ROI 폴리곤 & 시각화
+    std::vector<cv::Point> roi_poly_pts;
+    makeRoiPolygon(h, w, roi_poly_pts);
+
+    cv::Mat src_vis = bgr.clone();
+    cv::Mat overlay = bgr.clone();
+    std::vector<std::vector<cv::Point>> polys;
+    polys.push_back(roi_poly_pts);
+    cv::fillPoly(overlay, polys, cv::Scalar(0, 255, 0));
+    cv::addWeighted(overlay, 0.25, bgr, 0.75, 0.0, src_vis);
+    cv::polylines(src_vis, polys, true, cv::Scalar(0, 0, 0), 2);
+
+    // 카메라 프레임 중심 표시 (보라색 점)
+    cv::circle(src_vis, cv::Point(cx_cam, cy_cam), 6, cv::Scalar(255, 0, 255), -1);
+
+    // 2) BEV
+    cv::Mat bev_bgr = warpToBev(bgr, roi_poly_pts);
+
+    // 3) 이진화
+    cv::Mat bev_binary = binarizeLanes(bev_bgr);
+
+    // 4) 슬라이딩 윈도우
+    cv::Mat debug_img;
+    std::vector<cv::Point2f> left_centers, right_centers;
+    runSlidingWindowCollectCenters(bev_binary, debug_img,
+                                   left_centers, right_centers);
+
+    // 4-1) 좌/우 윈도우 중심 좌표 배열 퍼블리시 (픽셀 단위)
+    auto publish_centers = [](const std::vector<cv::Point2f>& centers,
+                              ros::Publisher& pub)
+    {
+      geometry_msgs::Polygon poly;
+      poly.points.reserve(centers.size());
+      for (const auto& p : centers) {
+        geometry_msgs::Point32 pt;
+        pt.x = p.x;
+        pt.y = p.y;
+        pt.z = 0.0f;
+        poly.points.push_back(pt);
+      }
+      pub.publish(poly);
+    };
+    publish_centers(left_centers,  g_pub_left_centers);
+    publish_centers(right_centers, g_pub_right_centers);
+
+    // 5) 차선 center point (디버그용)
+    cv::Point2f center_pt;
+    if (computeCenterPoint(left_centers, right_centers, center_pt)) {
+      geometry_msgs::PointStamped pt_msg;
+      pt_msg.header = msg->header;
+      pt_msg.header.frame_id = "bev";
+      pt_msg.point.x = center_pt.x;
+      pt_msg.point.y = center_pt.y;
+      pt_msg.point.z = 0.0;
+      g_pub_center_point.publish(pt_msg);
+
+      cv::circle(debug_img,
+                 cv::Point(static_cast<int>(center_pt.x),
+                           static_cast<int>(center_pt.y)),
+                 6, cv::Scalar(255, 0, 255), -1);
+    }
+
+    // 디버그 텍스트
+    auto put = [&](const std::string& txt, int y)
+    {
+      cv::putText(debug_img, txt, cv::Point(10, y),
+                  cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                  cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+    };
+    put("Left centers:  " + std::to_string(left_centers.size()), 24);
+    put("Right centers: " + std::to_string(right_centers.size()), 48);
+
+    // 6) 화면 출력
+    if (g_show_window) {
+      cv::Mat canvas;
+      cv::Mat src_resized, dbg_resized;
+      cv::resize(src_vis, src_resized, cv::Size(w, h));
+      cv::resize(debug_img, dbg_resized, cv::Size(w, h));
+      cv::hconcat(src_resized, dbg_resized, canvas);
+
+      cv::imshow(g_win_src, canvas);
+      cv::imshow(g_win_bev, bev_binary);
+      cv::waitKey(1);
+    }
+
+  } catch (const cv_bridge::Exception& e) {
+    ROS_WARN("[lane_ab_node] cv_bridge exception: %s", e.what());
+  } catch (const cv::Exception& e) {
+    ROS_WARN("[lane_ab_node] OpenCV exception: %s", e.what());
+  } catch (const std::exception& e) {
+    ROS_WARN("[lane_ab_node] std::exception: %s", e.what());
+  } catch (...) {
+    ROS_WARN("[lane_ab_node] unknown exception");
+  }
+}
+
+// -------------------- main --------------------
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "lane_ab_node");
+  ros::NodeHandle nh;      // global
+  ros::NodeHandle pnh("~");// private
+
+  // 파라미터 로드
+  pnh.param<bool>("show_window", g_show_window, true);
+  pnh.param<double>("lane_width_px", g_lane_width_px, 340.0);
+
+  pnh.param<int>("num_windows",      g_num_windows,      12);
+  pnh.param<int>("window_margin",    g_window_margin,    80);
+  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  50);
+  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     60);
+  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.8);
+
+  pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
+  pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.22);
+  pnh.param<double>("roi_right_top_ratio", g_roi_right_top_ratio, 0.78);
+  pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
+  pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
+
+  // 송도/대회장 전환용 플래그
+  //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
+  //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  true);
+
+  // Sub
+  ros::Subscriber img_sub =
+      nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+
+  // Pub (AB 제어 노드와 동일 토픽 이름)
+  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>(
+                         "/perception/center_point_px", 1);
+  g_pub_left_centers  = nh.advertise<geometry_msgs::Polygon>(
+                         "/perception/left_window_centers_px", 1);
+  g_pub_right_centers = nh.advertise<geometry_msgs::Polygon>(
+                         "/perception/right_window_centers_px", 1);
+
+  if (g_show_window) {
+    cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
+    cv::resizeWindow(g_win_src, 960, 540);
+    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
+    cv::resizeWindow(g_win_bev, 960, 540);
+  }
+
+  ROS_INFO("lane_ab_node running...");
+  ROS_INFO("  use_yellow_lanes = %s", g_use_yellow ? "true" : "false");
+  ROS_INFO("  use_white_lanes  = %s", g_use_white  ? "true" : "false");
+
+  ros::spin();
+  return 0;
+}

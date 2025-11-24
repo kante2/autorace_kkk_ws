@@ -1,0 +1,5 @@
+<node pkg="perception_node" type="crosswalk_node" name="crosswalk_node" output="screen">
+<!--true: 켜짐 // false: 꺼짐-->
+  <param name="use_yellow_lanes" value="flase"/>
+  <param name="use_white_lanes"  value="true"/>
+</node>

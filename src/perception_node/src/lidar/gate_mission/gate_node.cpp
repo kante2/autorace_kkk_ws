@@ -44,6 +44,8 @@ static laser_geometry::LaserProjection g_projector;
 static double g_eps            = 0.2;    // 클러스터 간 거리 [m]
 static int    g_min_samples    = 10;     // DBSCAN 최소 점 수
 static double g_gate_stop_dist = 2.0;    // 로봇-게이트 중심 거리 임계값 [m]
+static double g_front_min_deg  = 120.0;  // ROI 각도 시작(deg) - 후방0/전방180 CCW 기준
+static double g_front_max_deg  = 240.0;  // ROI 각도 끝(deg)
 
 // 게이트 상태 히스테리시스
 static int g_gate_down_count  = 0;
@@ -306,9 +308,9 @@ static void publishMarker(const std::vector<Point2D>& cluster,
   marker.action = visualization_msgs::Marker::ADD;
   marker.scale.x = 0.05;
   marker.scale.y = 0.05;
-  marker.color.r = 1.0;
-  marker.color.g = 0.2;
-  marker.color.b = 0.2;
+  marker.color.r = 0.0;
+  marker.color.g = 1.0;
+  marker.color.b = 0.0;
   marker.color.a = 1.0;
   marker.points.reserve(cluster.size());
   for (const auto& p : cluster) {
@@ -342,9 +344,8 @@ static void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
     if (angle_deg < 0.0)
       angle_deg += 360.0;
 
-    // 60도 ~ 300도 사이만 사용 (±120도)
-    if (angle_deg < 60.0 || angle_deg > 300.0)
-    {
+    // 후방=0, 전방=180, CCW 증가. 전방 ROI [g_front_min_deg, g_front_max_deg]만 사용.
+    if (angle_deg < g_front_min_deg || angle_deg > g_front_max_deg) {
       angle += scan->angle_increment;
       continue;
     }
@@ -427,6 +428,8 @@ int main(int argc, char** argv)
   pnh.param("gate_down_thresh", g_gate_down_thresh, g_gate_down_thresh);
   pnh.param("gate_up_thresh",   g_gate_up_thresh,   g_gate_up_thresh);
   pnh.param("gate_stop_dist",   g_gate_stop_dist,   g_gate_stop_dist);
+  pnh.param("front_min_deg",    g_front_min_deg,    g_front_min_deg);
+  pnh.param("front_max_deg",    g_front_max_deg,    g_front_max_deg);
 
   // Pub/Sub
   g_sub_scan = nh.subscribe<sensor_msgs::LaserScan>("/scan", 1, scanCallback);

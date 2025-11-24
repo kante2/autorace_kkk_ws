@@ -1,4 +1,5 @@
 // crosswalk_node.cpp
+// ----- 송도에선 yellow / 대회장은 white (파라미터로 선택) -----
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
@@ -32,7 +33,11 @@ cv::Scalar g_white_lower(0, 0, 150);
 cv::Scalar g_white_upper(179, 60, 255);
 
 // 임계값
-double g_white_ratio_threshold = 0.25;  // 흰색 비율 threshold
+double g_white_ratio_threshold = 0.20;  // 흰색 비율 threshold
+
+// 송도/대회장 전환용 플래그
+bool g_use_yellow = true;
+bool g_use_white  = false;
 
 // --------------------- compute --------------------------
 double computeWhiteRatio(const cv::Mat& binary)
@@ -111,16 +116,43 @@ cv::Mat binarizeLanes(const cv::Mat& bgr)
   cv::Mat hsv;
   cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
 
-  cv::Mat mask_y, mask_w;
-  cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
-  cv::inRange(hsv, g_white_lower,  g_white_upper,  mask_w);
+  cv::Mat mask_y, mask_w, mask;
 
-  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-  cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
-  cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  // 노란선 사용
+  if (g_use_yellow)
+  {
+    cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
 
-  cv::Mat mask;
-  cv::bitwise_or(mask_y, mask_w, mask);
+  // 흰선 사용
+  if (g_use_white)
+  {
+    cv::inRange(hsv, g_white_lower, g_white_upper, mask_w);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  }
+
+  // 둘 다 켰을 때
+  if (!mask_y.empty() && !mask_w.empty())
+  {
+    cv::bitwise_or(mask_y, mask_w, mask);
+  }
+  else if (!mask_y.empty())
+  {
+    mask = mask_y;
+  }
+  else if (!mask_w.empty())
+  {
+    mask = mask_w;
+  }
+  else
+  {
+    // 둘 다 false면 그냥 0으로 (아무것도 검출 안 함)
+    mask = cv::Mat::zeros(hsv.size(), CV_8UC1);
+  }
+
   return mask;
 }
 
@@ -149,7 +181,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     // 이진화
     cv::Mat bev_binary = binarizeLanes(bev_bgr);
 
-    // 흰색 비율 계산 + 퍼블리시
+    // 비율 계산 + 퍼블리시
     double white_ratio = computeWhiteRatio(bev_binary);
     std_msgs::Float64 ratio_msg;
     ratio_msg.data = white_ratio;
@@ -195,14 +227,22 @@ int main(int argc, char** argv)
   pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
   pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
 
+  // 송도/대회장 전환용 플래그
+  //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
+  //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, true);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  false);
+
   std::string image_topic;
   pnh.param<std::string>("image_topic", image_topic,
                          std::string("/usb_cam/image_rect_color"));
 
   std::string crosswalk_topic;
   std::string white_ratio_topic;
-  pnh.param<std::string>("crosswalk_topic",   crosswalk_topic,   std::string("/crosswalk_detected"));
-  pnh.param<std::string>("white_ratio_topic", white_ratio_topic, std::string("/perception/white_ratio"));
+  pnh.param<std::string>("crosswalk_topic",   crosswalk_topic,
+                         std::string("/crosswalk_detected"));
+  pnh.param<std::string>("white_ratio_topic", white_ratio_topic,
+                         std::string("/perception/white_ratio"));
 
   ros::Subscriber img_sub =
       nh.subscribe(image_topic, 2, imageCB);
@@ -218,6 +258,9 @@ int main(int argc, char** argv)
   }
 
   ROS_INFO("crosswalk_node running...");
+  ROS_INFO("  use_yellow_lanes = %s", g_use_yellow ? "true" : "false");
+  ROS_INFO("  use_white_lanes  = %s", g_use_white  ? "true" : "false");
+
   ros::spin();
   return 0;
 }
