@@ -62,6 +62,7 @@ std::vector<MissionState> g_mission_plan = {
 size_t g_stage_index = 0;
 bool   g_stage_active = false;
 ros::Time g_stage_start;
+ros::Time g_last_log_time;
 
 // -------------------- 감지 토픽 상태 플래그 --------------------
 bool g_labacorn_detected   = false;
@@ -133,6 +134,21 @@ bool isDetectedForState(MissionState s)
     case MISSION_ROTARY:    return g_rotary_detected;
     case MISSION_GATE:      return g_gate_detected;
     default:                return false;
+  }
+}
+
+const char* missionName(MissionState s)
+{
+  switch (s)
+  {
+    case MISSION_LANE:      return "MISSION_LANE";
+    case MISSION_LABACORN:  return "MISSION_LABACORN";
+    case MISSION_GATE:      return "MISSION_GATE";
+    case MISSION_CROSSWALK: return "MISSION_CROSSWALK";
+    case MISSION_ROTARY:    return "MISSION_ROTARY";
+    case MISSION_TURNSIGN:  return "MISSION_TURNSIGN";
+    case MISSION_COLOR:     return "MISSION_COLOR";
+    default:                return "MISSION_UNKNOWN";
   }
 }
 
@@ -313,6 +329,18 @@ int main(int argc, char** argv)
       case MISSION_COLOR:
         mission_color_step(g_lane_color_code);
         break;
+    }
+
+    // -----------------------------
+    // 3) 현재 미션 주기적 로그 (1초 간격)
+    // -----------------------------
+    ros::Time now_log = ros::Time::now();
+    if (g_last_log_time.isZero() || (now_log - g_last_log_time).toSec() >= 1.0) {
+      g_last_log_time = now_log;
+      ROS_INFO("[main_node] current mission: %s (stage %zu/%zu)",
+               missionName(g_current_state),
+               g_stage_index + 1,
+               g_mission_plan.size());
     }
 
     rate.sleep();

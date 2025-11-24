@@ -40,7 +40,7 @@ add_executable(main_node
   src/mission_crosswalk_toMain.cpp
   src/mission_gate/mission_gate_toMain.cpp
   src/mission_AB_toMain.cpp
-  src/mission_rotary/mission_rotary.cpp
+  src/mission_rotary_toMain.cpp
   src/mission_color_toMain.cpp
 )
 

@@ -87,6 +87,7 @@ endfunction()
 # === lane_kante_wego ===
 add_wego_node(lane_kante_wego_node src/camera/lane_kante_wego.cpp)
 add_wego_node(cluster_detect_lidar src/lidar/cluster_detect_lidar.cpp)
+add_wego_node(rotary_detect_lidar src/lidar/rotary_detect_lidar.cpp)
 
 ## 나중에 새 노드 추가할 때는 밑에 한 줄만 추가:
 ## add_wego_node(새노드이름_node src/새파일이름.cpp)
@@ -97,5 +98,6 @@ add_wego_node(cluster_detect_lidar src/lidar/cluster_detect_lidar.cpp)
 install(TARGETS
   lane_kante_wego_node
   cluster_detect_lidar
+  rotary_detect_lidar
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

@@ -45,8 +45,10 @@ ros::Publisher g_rotary_detected_pub;
 ros::Publisher g_motor_pub;
 ros::Publisher g_servo_pub;
 ros::Subscriber g_scan_sub;
-ros::Timer g_detection_timer;
 sensor_msgs::LaserScan::ConstPtr g_scan_msg;
+bool g_latest_has_close_object = false;
+ros::Time g_last_scan_time;
+double g_scan_timeout_sec = 0.5;
 
 double g_current_speed_mps = 0.0;
 
@@ -55,25 +57,20 @@ inline double clamp(double x, double lo, double hi) {
 }
 
 // -------------------- 콜백 --------------------
-void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) { g_scan_msg = scan_msg; }
-
-// -------------------- 내부 처리 --------------------
-// publish_control=false: 감지 토픽만 내고 모터/서보는 내지 않는다(미션 비활성화 시에도 감지는 계속).
-void processOnce(bool publish_control) {
-  if (!g_scan_msg) {
-    return;
-  }
+void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
+  g_scan_msg = scan_msg;
+  g_last_scan_time = ros::Time::now();
 
   const LidarProcessingResult processed = preprocessLidar(*g_scan_msg);
   const DetectionResult detection = detect(processed.angle_ranges_deg, processed.dist_ranges, g_eps, g_min_pts);
 
-  bool has_close_object = false;
+  g_latest_has_close_object = false;
   if (detection.detected) {
     for (std::size_t cluster_id = 0; cluster_id < detection.centroids.size(); ++cluster_id) {
       const ClusterCentroid &center = detection.centroids[cluster_id];
       ROS_INFO("id=%zu angle(deg)=%.3f distance(m)=%.3f", cluster_id, center.angle, center.distance);
       if (center.distance <= 1.0) {
-        has_close_object = true;
+        g_latest_has_close_object = true;
       }
     }
     publishClusterMarkers(g_cluster_pub, detection.centroids);
@@ -83,15 +80,26 @@ void processOnce(bool publish_control) {
 
   // 감지 여부 퍼블리시 (/rotary_detected 등)
   std_msgs::Bool detected_msg;
-  detected_msg.data = has_close_object;
+  detected_msg.data = g_latest_has_close_object;
   g_rotary_detected_pub.publish(detected_msg);
+}
 
-  if (!publish_control) {
-    return;
+// -------------------- 내부 처리 --------------------
+void publishControlFromDetection() {
+  // 스캔이 오래되면 안전 정지
+  if (g_scan_msg && g_last_scan_time.isZero() == false) {
+    double dt = (ros::Time::now() - g_last_scan_time).toSec();
+    if (dt > g_scan_timeout_sec) {
+      g_current_speed_mps = 0.0;
+      g_latest_has_close_object = false;
+    }
+  } else {
+    g_current_speed_mps = 0.0;
+    g_latest_has_close_object = false;
   }
 
   // 감속/가속 속도 결정
-  const double target_speed = has_close_object ? g_slow_speed_mps : g_cruise_speed_mps;
+  const double target_speed = g_latest_has_close_object ? g_slow_speed_mps : g_cruise_speed_mps;
   if (g_current_speed_mps > target_speed) {
     g_current_speed_mps = std::max(target_speed, g_current_speed_mps - g_speed_step_mps);
   } else if (g_current_speed_mps < target_speed) {
@@ -112,13 +120,8 @@ void processOnce(bool publish_control) {
 
   ROS_INFO_THROTTLE(0.5,
                     "[mission_rotary] detected=%d target_v=%.2f cur_v=%.2f motor=%.1f servo=%.2f",
-                    static_cast<int>(has_close_object), target_speed, g_current_speed_mps, motor_cmd,
-                    servo_cmd);
-}
-
-void detectionTimerCb(const ros::TimerEvent &) {
-  // 미션 활성 여부와 무관하게 감지 상태를 주기적으로 퍼블리시
-  processOnce(false);
+                    static_cast<int>(g_latest_has_close_object), target_speed, g_current_speed_mps,
+                    motor_cmd, servo_cmd);
 }
 }  // namespace
 
@@ -146,6 +149,7 @@ void mission_rotary_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
   pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 2000.0);
   pnh.param<double>("motor_gain", g_motor_gain, 1500.0);
+  pnh.param<double>("scan_timeout_sec", g_scan_timeout_sec, 0.5);
 
   pnh.param<double>("servo_center", g_servo_center, 0.5);
   pnh.param<double>("servo_min", g_servo_min, 0.0);
@@ -165,15 +169,16 @@ void mission_rotary_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
   g_motor_pub = nh.advertise<std_msgs::Float64>(g_topic_motor, 10);
   g_servo_pub = nh.advertise<std_msgs::Float64>(g_topic_servo, 10);
   g_scan_sub = nh.subscribe(g_topic_scan, 1, scanCallback);
-  g_detection_timer = nh.createTimer(ros::Duration(1.0 / 30.0), detectionTimerCb);
 
   g_scan_msg.reset();
   g_current_speed_mps = g_cruise_speed_mps;
+  g_last_scan_time = ros::Time(0);
+  g_latest_has_close_object = false;
 
   ROS_INFO("[mission_rotary] init done");
 }
 
 // main loop에서 호출
 void mission_rotary_step() {
-  processOnce(true);
+  publishControlFromDetection();
 }
