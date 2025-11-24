@@ -26,6 +26,7 @@ ros::Publisher g_pub_right_centers;  // 슬라이딩 윈도우 우측 포인트 
 bool g_show_window = true;
 std::string g_win_src = "src_with_roi";
 std::string g_win_bev = "bev_binary_and_windows";
+bool g_swap_lane_stop_colors = false;  // false: lane=white, stop=yellow (기본 테스트 환경)
 
 // init ----------------------------------------------
 bool is_cross_walk = false;          // true면 "횡단보도 지나가라" 플래그
@@ -40,8 +41,8 @@ int    g_min_lane_sep      = 60;
 double g_center_ema_alpha  = 0.8;
 
 double g_roi_top_y_ratio     = 0.60;
-double g_roi_left_top_ratio  = 0.22;
-double g_roi_right_top_ratio = 0.78;
+double g_roi_left_top_ratio  = 0.10;
+double g_roi_right_top_ratio = 0.90;
 double g_roi_left_bot_ratio  = -0.40;
 double g_roi_right_bot_ratio = 1.40;
 
@@ -51,7 +52,7 @@ int g_mission1_min_pixel = 500;
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
 cv::Scalar g_white_lower(0, 0, 150);
-cv::Scalar g_white_upper(179, 60, 255);
+cv::Scalar g_white_upper(179, 80, 255);
 
 // 빨강(두 구간) + 파랑
 cv::Scalar g_red_lower1(0,   80, 80);
@@ -251,6 +252,40 @@ cv::Mat binarizeLanes(const cv::Mat& bgr)
   cv::Mat mask;
   cv::bitwise_or(mask_y, mask_w, mask);
   return mask;
+}
+
+// 흰색 차선만 이진화
+cv::Mat binarizeWhiteLanes(const cv::Mat& bgr)
+{
+  cv::Mat hsv;
+  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
+
+  cv::Mat mask_w;
+  cv::inRange(hsv, g_white_lower, g_white_upper, mask_w);
+
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    // ▶▶ 중요: CLOSE로 끊긴 부분을 먼저 이어줌
+  cv::morphologyEx(mask_w, mask_w, cv::MORPH_CLOSE, kernel);
+
+  // ▶ 노이즈 제거는 마지막에 OPEN
+  cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel);
+
+  // cv::morphologyEx(mask_w, mask_w, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  return mask_w;
+}
+
+// 노란 정지선/횡단보도만 이진화
+cv::Mat binarizeYellowStopline(const cv::Mat& bgr)
+{
+  cv::Mat hsv;
+  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
+
+  cv::Mat mask_y;
+  cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
+
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+  cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  return mask_y;
 }
 
 void runSlidingWindowCollectCenters(const cv::Mat& binary_mask,
@@ -469,42 +504,6 @@ bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
   return false;
 }
 
-// 횡단보도(정지선) 인식 + 7초 정지 + 2초 플래그 로직을 한 함수로 묶기
-bool computeCrossWalk(double white_ratio, const ros::Time& now)
-{
-  // 1) 정지 상태 업데이트
-  compute_StopState(white_ratio, now);
-
-  // 2) 정지 상태에서 풀린 뒤 2초 동안 is_cross_walk = true
-  static bool      last_stop_active      = false;
-  static ros::Time go_straight_start_time;
-
-  // "방금 정지해제 된 순간" 감지
-  if (last_stop_active && !g_stop_active)
-  {
-    is_cross_walk          = true;
-    go_straight_start_time = now;
-    ROS_INFO("[stopline_node] crosswalk flag START (2s)");
-  }
-
-  // 플래그 유지 시간 체크 (2초 지나면 false)
-  if (is_cross_walk)
-  {
-    double dt = (now - go_straight_start_time).toSec();
-    if (dt >= 2.0)
-    {
-      is_cross_walk = false;
-      ROS_INFO("[stopline_node] crosswalk flag END");
-    }
-  }
-
-  // 다음 프레임을 위해 상태 저장
-  last_stop_active = g_stop_active;
-
-  // 현재 횡단보도 플래그 반환
-  return is_cross_walk;
-}
-
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -542,28 +541,24 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     // 2) BEV
     cv::Mat bev_bgr = warpToBev(bgr, roi_poly_pts);
 
-    // 3) 이진화
-    cv::Mat bev_binary = binarizeLanes(bev_bgr);
-
-    // 3-1) 횡단보도(정지선) 인식: 흰색 비율 계산 + 퍼블리시
-    double white_ratio = computeWhiteRatio(bev_binary);
-    std_msgs::Float64 ratio_msg;
-    ratio_msg.data = white_ratio;
-    g_pub_white_ratio.publish(ratio_msg);
-
-    // 3-2) 정지/횡단보도 플래그 계산
-    ros::Time now = ros::Time::now();
-    bool crosswalk_flag = computeCrossWalk(white_ratio, now);
-
-    // 3-3) 현재 is_cross_walk 값을 퍼블리시
-    pub_go_straight_cmd(g_pub_is_cross_walk, crosswalk_flag);
-    // ------------------------------------------------------------
+    // 3) 이진화: 차선과 정지선/횡단보도 분리
+    cv::Mat lane_mask;
+    cv::Mat stop_mask;
+    if (g_swap_lane_stop_colors) {
+      // 대회 환경: 차선=노랑, 정지선=흰색
+      lane_mask = binarizeYellowStopline(bev_bgr);
+      stop_mask = binarizeWhiteLanes(bev_bgr);
+    } else {
+      // 기본 테스트 환경: 차선=흰색, 정지선=노랑
+      lane_mask = binarizeWhiteLanes(bev_bgr);
+      stop_mask = binarizeYellowStopline(bev_bgr);
+    }
 
     // 4) 슬라이딩 윈도우
     cv::Mat debug_img;
-  std::vector<cv::Point2f> left_centers, right_centers;
-  runSlidingWindowCollectCenters(bev_binary, debug_img,
-                                 left_centers, right_centers);
+    std::vector<cv::Point2f> left_centers, right_centers;
+    runSlidingWindowCollectCenters(lane_mask, debug_img,
+                                   left_centers, right_centers);
 
     // 4-1) 좌/우 윈도우 중심 좌표 배열 퍼블리시 (픽셀 단위)
     auto publish_centers = [](const std::vector<cv::Point2f>& centers,
@@ -642,7 +637,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
       cv::hconcat(src_resized, dbg_resized, canvas);
 
       cv::imshow(g_win_src, canvas);
-      cv::imshow(g_win_bev, bev_binary);
+      cv::imshow(g_win_bev, lane_mask);
       cv::waitKey(1);
     }
 
@@ -666,18 +661,19 @@ int main(int argc, char** argv)
 
   // 파라미터 로드
   pnh.param<bool>("show_window", g_show_window, true);
+  pnh.param<bool>("swap_lane_stop_colors", g_swap_lane_stop_colors, false);
   pnh.param<double>("lane_width_px", g_lane_width_px, 340.0);
 
   pnh.param<int>("num_windows",      g_num_windows,      12);
-  pnh.param<int>("window_margin",    g_window_margin,    80);
-  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  50);
-  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     60);
-  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.8);
+  pnh.param<int>("window_margin",    g_window_margin,    90); // 80 → 90 (더 넓게 잡기)
+  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  20); // 50 → 20 (한 프레임 놓치지 않도록)
+  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     50); // 60 → 50 (실제 차선 간격 350에 맞춰)
+  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.6); // 0.8 → 0.6 (더 빠르게 원래 위치로 복귀)
 
   pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
-  pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.22);
-  pnh.param<double>("roi_right_top_ratio", g_roi_right_top_ratio, 0.78);
-  pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
+  pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.10);
+  pnh.param<double>("roi_right_top_ratio", g_roi_right_top_ratio, 0.85);
+  pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.45);
   pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
 
   pnh.param<int>("mission1_min_pixel", g_mission1_min_pixel, 500);
