@@ -21,7 +21,7 @@ public:
   explicit ClusterVisualizer(const std::string &topic = "rotary/obstacle_markers")
       : publisher_(nh_.advertise<visualization_msgs::MarkerArray>(topic, 1)) {}
 
-  void publish(const DetectionResult &det) {
+  void publish(const DetectionResult &det, const std::vector<bool> &dynamic_flags) {
     visualization_msgs::MarkerArray marker_array;
     const ros::Time stamp = ros::Time::now();
 
@@ -46,9 +46,16 @@ public:
       marker.scale.y = 0.2;
       marker.scale.z = 0.2;
 
-      marker.color.r = 0.2f;
-      marker.color.g = 0.6f;
-      marker.color.b = 1.0f;
+      const bool is_dynamic = (i < dynamic_flags.size()) ? dynamic_flags[i] : false;
+      if (is_dynamic) {
+        marker.color.r = 0.1f;
+        marker.color.g = 0.5f;
+        marker.color.b = 1.0f;  // 파란색 계열 (동적)
+      } else {
+        marker.color.r = 1.0f;
+        marker.color.g = 0.2f;
+        marker.color.b = 0.2f;  // 빨간색 계열 (정적)
+      }
       marker.color.a = 0.9f;
 
       marker_array.markers.push_back(marker);
@@ -78,15 +85,21 @@ public:
         points_marker.scale.y = 0.08;
         points_marker.scale.z = 0.08;
 
-        // Color from label (simple hash)
-        std_msgs::ColorRGBA c;
-        const double hue = (label * 70) % 360;  // vary hue
-        const double rad = hue * M_PI / 180.0;
-        c.r = static_cast<float>(0.6 + 0.4 * std::cos(rad));
-        c.g = static_cast<float>(0.6 + 0.4 * std::cos(rad + 2.094));  // +120 deg
-        c.b = static_cast<float>(0.6 + 0.4 * std::cos(rad + 4.188));  // +240 deg
-        c.a = 0.9f;
-        points_marker.color = c;
+        // 색상: 정적 빨간색, 동적 파란색
+        const bool is_dynamic =
+            (label >= 0 && static_cast<std::size_t>(label) < dynamic_flags.size())
+                ? dynamic_flags[static_cast<std::size_t>(label)]
+                : false;
+        if (is_dynamic) {
+          points_marker.color.r = 0.1f;
+          points_marker.color.g = 0.5f;
+          points_marker.color.b = 1.0f;
+        } else {
+          points_marker.color.r = 1.0f;
+          points_marker.color.g = 0.2f;
+          points_marker.color.b = 0.2f;
+        }
+        points_marker.color.a = 0.9f;
 
         for (std::size_t idx = 0; idx < det.labels.size(); ++idx) {
           if (det.labels[idx] != label) {

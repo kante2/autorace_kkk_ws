@@ -109,6 +109,40 @@ inline std::vector<int> dbscan(int min_pts, double eps, const std::vector<PointX
   return labels;
 }
 
+inline void applyMaxPtsLimit(int max_pts, std::vector<int> &labels) {
+  if (max_pts <= 0 || labels.empty()) {
+    return;
+  }
+
+  int max_label = -1;
+  for (int label : labels) {
+    if (label >= 0 && label > max_label) {
+      max_label = label;
+    }
+  }
+  if (max_label < 0) {
+    return;
+  }
+
+  std::vector<int> counts(static_cast<std::size_t>(max_label) + 1, 0);
+  for (int label : labels) {
+    if (label >= 0) {
+      ++counts[static_cast<std::size_t>(label)];
+    }
+  }
+
+  constexpr int NOISE = -2;
+  for (int label = 0; label <= max_label; ++label) {
+    if (counts[static_cast<std::size_t>(label)] > max_pts) {
+      for (int &l : labels) {
+        if (l == label) {
+          l = NOISE;  // 넘치는 클러스터는 노이즈로 취급
+        }
+      }
+    }
+  }
+}
+
 inline std::vector<ClusterCentroid> computeCentroids(const std::vector<PointXY> &points,
                                                      const std::vector<int> &labels) {
   std::vector<ClusterCentroid> centroids;
@@ -156,7 +190,8 @@ inline std::vector<ClusterCentroid> computeCentroids(const std::vector<PointXY> 
 }
 
 inline DetectionResult detect(const std::vector<double> &angle_ranges_deg,
-                              const std::vector<double> &dist_ranges, double eps, int min_pts) {
+                              const std::vector<double> &dist_ranges, double eps, int min_pts,
+                              int max_pts = -1) {
   DetectionResult result;
   if (angle_ranges_deg.empty() || dist_ranges.empty()) {
     result.detected = false;
@@ -165,6 +200,8 @@ inline DetectionResult detect(const std::vector<double> &angle_ranges_deg,
 
   result.points_xy = polarToCartesian(angle_ranges_deg, dist_ranges);
   result.labels = dbscan(min_pts, eps, result.points_xy);
+  // 클러스터 크기가 max_pts를 넘으면 노이즈로 재분류
+  applyMaxPtsLimit(max_pts, result.labels);
   result.centroids = computeCentroids(result.points_xy, result.labels);
   result.detected = !result.centroids.empty();
   return result;
