@@ -263,12 +263,12 @@ int main(int argc, char** argv)
     if (g_current_state != prev_state)
     {
       const char* state_name = "LANE";
-      if (g_current_state == MISSION_LABACORN)      state_name = "LABACORN";
-      else if (g_current_state == MISSION_GATE)     state_name = "GATE";
-      else if (g_current_state == MISSION_CROSSWALK) state_name = "CROSSWALK";
-      else if (g_current_state == MISSION_ROTARY) state_name = "ROTARY";
-      else if (g_current_state == MISSION_PARKING) state_name = "PARKING";
-      else if (g_current_state == MISSION_AB) state_name = "AB";
+      if (g_current_state == MISSION_LABACORN)        state_name = "LABACORN";
+      else if (g_current_state == MISSION_GATE)       state_name = "GATE";
+      else if (g_current_state == MISSION_CROSSWALK)  state_name = "CROSSWALK";
+      else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY";
+      else if (g_current_state == MISSION_PARKING)    state_name = "PARKING";
+      else if (g_current_state == MISSION_AB)         state_name = "AB";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
 
@@ -338,6 +338,37 @@ int main(int argc, char** argv)
 
       case MISSION_PARKING:
         mission_parking_step();
+        break;
+
+      case MISSION_AB:
+        if (g_ab_latched_dir == 0)
+        {
+          mission_ab_left_step();
+          if (mission_ab_left_done())
+          {
+            g_ab_action_running = false;
+            g_ab_latched_dir = -1;
+            g_ab_left_detected = false;
+            g_ab_right_detected = false;
+            ROS_INFO("[main_node] AB-left finished -> back to LANE");
+          }
+        }
+        else if (g_ab_latched_dir == 1)
+        {
+          mission_ab_right_step();
+          if (mission_ab_right_done())
+          {
+            g_ab_action_running = false;
+            g_ab_latched_dir = -1;
+            g_ab_left_detected = false;
+            g_ab_right_detected = false;
+            ROS_INFO("[main_node] AB-right finished -> back to LANE");
+          }
+        }
+        else
+        {
+          mission_lane_step();
+        }
         break;
 
       default:
