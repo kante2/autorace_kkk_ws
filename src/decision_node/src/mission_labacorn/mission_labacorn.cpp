@@ -76,8 +76,8 @@ void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("servo_max", g_servo_max, 1.0);
   pnh.param<double>("steer_sign", g_steer_sign, 1.0);
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
-  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 2000.0);
-  pnh.param<double>("motor_gain", g_motor_gain, 1500.0);
+  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 1100.0);
+  pnh.param<double>("motor_gain", g_motor_gain, 1000.0);
   pnh.param<double>("marker_timeout_sec", g_marker_timeout_sec, 0.5);  // target timeout
 
   ROS_INFO("[mission_labacorn] subscribe detected='%s', target='%s'",

@@ -1,5 +1,5 @@
 <launch>
-  <node pkg="perception_node" type="lane_center_node_noise_debug" name="lane_center_node_noise_debug" output="screen"/>
+  <node pkg="perception_node" type="lane_center_node" name="lane_center_node" output="screen"/>
   <node pkg="perception_node" type="lane_color_node" name="lane_color_node" output="screen"/>
   <node pkg="perception_node" type="crosswalk_node" name="crosswalk_node" output="screen"/>
 </launch>
