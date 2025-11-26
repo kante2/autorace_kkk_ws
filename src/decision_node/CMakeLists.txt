@@ -51,6 +51,7 @@ add_executable(main_node
   src/mission_lane/mission_lane.cpp
   src/mission_labacorn/mission_labacorn.cpp
   # ----------
+  src/mission_lane/lane_debug.cpp
   src/mission_gate/mission_gate.cpp
   src/mission_crosswalk/mission_crosswalk.cpp
   src/mission_rotary/mission_rotary.cpp
