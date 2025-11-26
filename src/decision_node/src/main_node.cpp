@@ -61,6 +61,10 @@ bool g_rotary_detected     = false;
 bool g_parking_detected    = false;
 bool g_parking_bag_lock    = false;
 int  g_labacorn_count = 0;
+bool g_labacorn_session_active = false;
+ros::Time g_labacorn_session_start;
+ros::Time g_labacorn_last_seen;
+const double k_labacorn_grace_sec = 5.0; // 라바콘 끊김 완충/타임아웃
 bool g_ab_left_detected    = false;
 bool g_ab_right_detected   = false;
 int  g_ab_latched_dir      = -1; // -1 none, 0 left, 1 right
@@ -71,49 +75,35 @@ bool g_ab_action_running   = false;
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
 {
   g_labacorn_detected = msg->data;
+  if (msg->data)
+  {
+    g_labacorn_last_seen = ros::Time::now();
+  }
 }
 
 // -------------------- 콜백: 게이트 감지 --------------------
-void CB_GateDetected(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_gate_detected = msg->data;
-}
+void CB_GateDetected(const std_msgs::Bool::ConstPtr& msg)         g_gate_detected = msg->data;
 
 // -------------------- 콜백: 횡단보도 감지 --------------------
-void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_crosswalk_detected = msg->data;
-}
+void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)    g_crosswalk_detected = msg->data;
+
 
 // -------------------- 콜백: rotary 감지 --------------------
-void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_rotary_detected = msg->data;
-}
+void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)       g_rotary_detected = msg->data;
 
-void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_parking_detected = msg->data;
-}
+void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)      g_parking_detected = msg->data;
 
-void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_parking_bag_lock = msg->data;
-}
+void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)       g_parking_bag_lock = msg->data;
 
 // -------------------- 콜백: AB 좌/우 감지 --------------------
 void CB_AB_Left(const std_msgs::Bool::ConstPtr& msg)
 {
-  if (msg->data) {
-    g_ab_left_detected = true;
-  }
+  if (msg->data) g_ab_left_detected = true;
 }
 
 void CB_AB_Right(const std_msgs::Bool::ConstPtr& msg)
 {
-  if (msg->data) {
-    g_ab_right_detected = true;
-  }
+  if (msg->data) g_ab_right_detected = true;
 }
 
 // -------------------- main --------------------
@@ -136,37 +126,15 @@ int main(int argc, char** argv)
   std::string topic_ab_left;
   std::string topic_ab_right;
 
-  pnh.param<std::string>("labacorn_detected_topic",
-                         topic_labacorn_detected,
-                         std::string("/labacorn_detected"));
-
-  pnh.param<std::string>("gate_detected_topic",
-                         topic_gate_detected,
-                         std::string("/gate_detected"));
-
-  pnh.param<std::string>("crosswalk_detected_topic",
-                         topic_crosswalk_detected,
-                         std::string("/crosswalk_detected"));
-
-  pnh.param<std::string>("rotary_detected_topic",
-                         topic_rotary_detected,
-                         std::string("/rotary_detected"));
-
-  pnh.param<std::string>("parking_detected_topic",
-                         topic_parking_detected,
-                         std::string("/parking_detected"));
-  pnh.param<std::string>("parking_bag_lock_topic",
-                         topic_parking_bag_lock,
-                         std::string("/parking_bag_lock"));
-  pnh.param<std::string>("ab_enable_topic",
-                         topic_ab_enable,
-                         std::string("/ab_sign/enable"));
-  pnh.param<std::string>("ab_left_topic",
-                         topic_ab_left,
-                         std::string("/ab_sign/left"));
-  pnh.param<std::string>("ab_right_topic",
-                         topic_ab_right,
-                         std::string("/ab_sign/right"));
+  pnh.param<std::string>("labacorn_detected_topic", topic_labacorn_detected, std::string("/labacorn_detected"));
+  pnh.param<std::string>("gate_detected_topic", topic_gate_detected, std::string("/gate_detected"));
+  pnh.param<std::string>("crosswalk_detected_topic", topic_crosswalk_detected, std::string("/crosswalk_detected"));
+  pnh.param<std::string>("rotary_detected_topic",topic_rotary_detected,std::string("/rotary_detected"));
+  pnh.param<std::string>("parking_detected_topic",topic_parking_detected,std::string("/parking_detected"));
+  pnh.param<std::string>("parking_bag_lock_topic", topic_parking_bag_lock,std::string("/parking_bag_lock"));
+  pnh.param<std::string>("ab_enable_topic",topic_ab_enable, std::string("/ab_sign/enable"));
+  pnh.param<std::string>("ab_left_topic", topic_ab_left,std::string("/ab_sign/left"));
+  pnh.param<std::string>("ab_right_topic",topic_ab_right,std::string("/ab_sign/right"));
 
   ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', parking='%s'",
            ros::names::resolve(topic_labacorn_detected).c_str(),
@@ -226,38 +194,16 @@ int main(int argc, char** argv)
     // 1) 미션 상태 결정 로직
     //    (우선순위: 게이트 > 횡단보도 > 라바콘 > 기본 차선)
     // -----------------------------
-    if (g_parking_bag_lock)
-    {
-      g_current_state = MISSION_PARKING;
-    }
-    else if (g_gate_detected)
-    {
-      g_current_state = MISSION_GATE;
-    }
-    else if (g_crosswalk_detected)
-    {
-      g_current_state = MISSION_CROSSWALK;
-    }
-    else if (g_ab_action_running || g_ab_latched_dir != -1)
-    {
-      g_current_state = MISSION_AB;
-    }
-    else if (g_labacorn_detected)
-    {
-      g_current_state = MISSION_LABACORN;
-    }
-    else if (g_rotary_detected)
-    {
-      g_current_state = MISSION_ROTARY;
-    }
-    else if (g_parking_detected)
-    {
-      g_current_state = MISSION_PARKING;
-    }
-    else
-    {
-      g_current_state = MISSION_LANE;
-    }
+    if (g_parking_bag_lock)                                 g_current_state = MISSION_PARKING;
+    else if (g_gate_detected)                               g_current_state = MISSION_GATE;
+    else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
+
+    else if (g_ab_action_running || g_ab_latched_dir != -1) g_current_state = MISSION_AB;
+    else if (g_labacorn_detected)                           g_current_state = MISSION_LABACORN;
+    else if (g_rotary_detected)                             g_current_state = MISSION_ROTARY;
+    else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
+
+    else                                                    g_current_state = MISSION_LANE;
 
     // 상태 변경 시 로그
     if (g_current_state != prev_state)
@@ -278,7 +224,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
-        if (g_labacorn_count == 1)
+        if (g_labacorn_count == 1) // 여기 디버깅 되는지 체크하는 역할 필요.. -> 중간에 센서 인지에 따라서, 차선로직으로 순간적으로 빠져나올 수도 있다는 문제가 존재.. 
         {
           std_msgs::Bool enable_msg;
           enable_msg.data = true; // 1 -> TRUE,
@@ -290,8 +236,8 @@ int main(int argc, char** argv)
       {
         if (g_ab_latched_dir == -1)
         {
-          if (g_ab_left_detected) g_ab_latched_dir = 0; // left detect -> left
-          else if (g_ab_right_detected) g_ab_latched_dir = 1; // right detect -> right 
+          if (g_ab_left_detected) g_ab_latched_dir = 0;         // left detect -> left
+          else if (g_ab_right_detected) g_ab_latched_dir = 1;   // right detect -> right 
         }
         if (g_ab_latched_dir == 0) // left
         {
@@ -347,6 +293,5 @@ int main(int argc, char** argv)
 
     rate.sleep();
   }
-
   return 0;
 }
