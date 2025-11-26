@@ -274,7 +274,7 @@ int main(int argc, char** argv)
 
       // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
       // 2. /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py가 left, right 를 뽑는다.
-      // 3. main이 다시 구독 -->   /root/autorace_kkk_ws/src/decision_node/src/mission_ab/mission_ab_left.cpp, 또는 right를 실행하도록 한다.
+      // 3. main이 다시 구독 -->   /root/autorace_kkk_ws/src/decision_node/src/mission_ab/mission_ab_left.cpp, 또는 right를 8초간 실행하도록 한다.
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
@@ -338,37 +338,6 @@ int main(int argc, char** argv)
 
       case MISSION_PARKING:
         mission_parking_step();
-        break;
-
-      case MISSION_AB:
-        if (g_ab_latched_dir == 0)
-        {
-          mission_ab_left_step();
-          if (mission_ab_left_done())
-          {
-            g_ab_action_running = false;
-            g_ab_latched_dir = -1;
-            g_ab_left_detected = false;
-            g_ab_right_detected = false;
-            ROS_INFO("[main_node] AB-left finished -> back to LANE");
-          }
-        }
-        else if (g_ab_latched_dir == 1)
-        {
-          mission_ab_right_step();
-          if (mission_ab_right_done())
-          {
-            g_ab_action_running = false;
-            g_ab_latched_dir = -1;
-            g_ab_left_detected = false;
-            g_ab_right_detected = false;
-            ROS_INFO("[main_node] AB-right finished -> back to LANE");
-          }
-        }
-        else
-        {
-          mission_lane_step();
-        }
         break;
 
       default:
