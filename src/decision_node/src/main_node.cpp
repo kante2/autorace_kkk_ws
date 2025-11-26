@@ -64,10 +64,10 @@ int  g_labacorn_count = 0;
 bool g_labacorn_session_active = false;
 ros::Time g_labacorn_session_start;
 ros::Time g_labacorn_last_seen;
-const double k_labacorn_grace_sec = 5.0; // 라바콘 끊김 완충/타임아웃
+// const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃 ** 로직에는 미완,// 먼저 라바콘 도중 끊킴이 없으면 해당 조건문을 추가하지 않아도됨
 bool g_ab_left_detected    = false;
 bool g_ab_right_detected   = false;
-int  g_ab_latched_dir      = -1; // -1 none, 0 left, 1 right
+int  g_ab_lock_dir      = -1;                      // -1 none, 0 left, 1 right --> 이거는 ab 표지판 감지한 방향을 고정(래치)해두는 변수이다.
 bool g_ab_action_running   = false;
 
 
@@ -92,7 +92,6 @@ void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
 {
   g_crosswalk_detected = msg->data;
 }
-
 
 // -------------------- 콜백: rotary 감지 --------------------
 void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -213,7 +212,7 @@ int main(int argc, char** argv)
     else if (g_gate_detected)                               g_current_state = MISSION_GATE;
     else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
 
-    else if (g_ab_action_running || g_ab_latched_dir != -1) g_current_state = MISSION_AB;
+    else if (g_ab_action_running || g_ab_lock_dir != -1) g_current_state = MISSION_AB;
     else if (g_labacorn_detected)                           g_current_state = MISSION_LABACORN;
     else if (g_rotary_detected)                             g_current_state = MISSION_ROTARY;
     else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
@@ -232,6 +231,10 @@ int main(int argc, char** argv)
       else if (g_current_state == MISSION_AB)         state_name = "AB";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
+      if (prev_state == MISSION_LABACORN && g_current_state != MISSION_LABACORN) // 라바콘 빠져나가는 부분 디버깅용 ** 
+      {
+        ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d, ab_lock_dir=%d)",state_name, (int)g_labacorn_detected, g_ab_lock_dir);
+      }
 
       // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
       // 2. /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py가 left, right 를 뽑는다.
@@ -249,17 +252,17 @@ int main(int argc, char** argv)
       }
       else if (g_current_state == MISSION_AB)
       {
-        if (g_ab_latched_dir == -1)
+        if (g_ab_lock_dir == -1)                             // 미정 --> 좌,우 감지 플래그를 보고 한번 세팅, 
         {
-          if (g_ab_left_detected) g_ab_latched_dir = 0;         // left detect -> left
-          else if (g_ab_right_detected) g_ab_latched_dir = 1;   // right detect -> right 
+          if (g_ab_left_detected) g_ab_lock_dir = 0;         // left detect -> left
+          else if (g_ab_right_detected) g_ab_lock_dir = 1;   // right detect -> right 
         }
-        if (g_ab_latched_dir == 0) // left
+        if (g_ab_lock_dir == 0)          // LEFT
         {
           mission_ab_left_reset();
           g_ab_action_running = true;
         }
-        else if (g_ab_latched_dir == 1)
+        else if (g_ab_lock_dir == 1)     // RIGHT
         {
           mission_ab_right_reset();
           g_ab_action_running = true;

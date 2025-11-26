@@ -36,7 +36,7 @@ class TrafficSignNode:
         self.debounce_frames = int(rospy.get_param("~debounce_frames", 5))
         self.publish_debug = bool(rospy.get_param("~publish_debug", False))
         self.show_window = bool(rospy.get_param("~show_window", True))
-        self.enable_duration = float(rospy.get_param("~enable_duration_sec", 8.0))
+        self.enable_duration = float(rospy.get_param("~enable_duration_sec", 8.0)) # 이 traffic_sign을 인지하도록 이 노드가 켜지는 시간에 해당
 
         # YOLO settings
         self.yolo_model_path = rospy.get_param(

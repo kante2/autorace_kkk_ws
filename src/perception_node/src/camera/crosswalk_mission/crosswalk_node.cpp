@@ -232,6 +232,8 @@ int main(int argc, char** argv)
   //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
   pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
   pnh.param<bool>("use_white_lanes",  g_use_white,  true);
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  true);
 
   std::string image_topic;
   pnh.param<std::string>("image_topic", image_topic,
