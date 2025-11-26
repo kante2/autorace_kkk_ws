@@ -144,3 +144,20 @@ add_dependencies(gate_debug
 target_link_libraries(gate_debug
   ${catkin_LIBRARIES}
 )
+
+# 디버그용 AB 왼쪽 단독 노드
+add_executable(ab_left_debug
+  src/mission_ab/ab_left_debug.cpp
+  src/mission_ab/mission_ab_left.cpp
+)
+
+target_compile_features(ab_left_debug PRIVATE cxx_std_17)
+
+add_dependencies(ab_left_debug
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(ab_left_debug
+  ${catkin_LIBRARIES}
+)
