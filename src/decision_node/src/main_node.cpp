@@ -150,39 +150,16 @@ int main(int argc, char** argv)
   pnh.param<std::string>("ab_left_topic", topic_ab_left,std::string("/ab_sign/left"));
   pnh.param<std::string>("ab_right_topic",topic_ab_right,std::string("/ab_sign/right"));
 
-  ROS_INFO("[main_node] subscribe labacorn='%s', gate='%s', crosswalk='%s', rotary='%s', parking='%s'",
-           ros::names::resolve(topic_labacorn_detected).c_str(),
-           ros::names::resolve(topic_gate_detected).c_str(),
-           ros::names::resolve(topic_crosswalk_detected).c_str(),
-           ros::names::resolve(topic_rotary_detected).c_str(),
-           ros::names::resolve(topic_parking_detected).c_str());
-  ROS_INFO("[main_node] subscribe parking_bag_lock='%s'",
-           ros::names::resolve(topic_parking_bag_lock).c_str());
-  ROS_INFO("[main_node] publish ab_enable='%s'",
-           ros::names::resolve(topic_ab_enable).c_str());
-  ROS_INFO("[main_node] subscribe ab_left='%s', ab_right='%s'",
-           ros::names::resolve(topic_ab_left).c_str(),
-           ros::names::resolve(topic_ab_right).c_str());
-
   // ===== 감지 토픽 구독 =====
-  ros::Subscriber sub_labacorn =
-      nh.subscribe(topic_labacorn_detected, 1, CB_LabacornDetected);
-  ros::Subscriber sub_gate =
-      nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
-  ros::Subscriber sub_crosswalk =
-      nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
-  ros::Subscriber sub_rotary =
-      nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
-  ros::Subscriber sub_parking =
-      nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
-  ros::Subscriber sub_parking_lock =
-      nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
-  ros::Subscriber sub_ab_left =
-      nh.subscribe(topic_ab_left, 1, CB_AB_Left);
-  ros::Subscriber sub_ab_right =
-      nh.subscribe(topic_ab_right, 1, CB_AB_Right);
-  ros::Publisher pub_ab_enable =
-      nh.advertise<std_msgs::Bool>(topic_ab_enable, 1, true);
+  ros::Subscriber sub_labacorn =  nh.subscribe(topic_labacorn_detected, 1, CB_LabacornDetected);
+  ros::Subscriber sub_gate =      nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
+  ros::Subscriber sub_crosswalk = nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
+  ros::Subscriber sub_rotary =    nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
+  ros::Subscriber sub_parking =   nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
+  ros::Subscriber sub_parking_lock = nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
+  ros::Subscriber sub_ab_left =     nh.subscribe(topic_ab_left, 1, CB_AB_Left);
+  ros::Subscriber sub_ab_right =    nh.subscribe(topic_ab_right, 1, CB_AB_Right);
+  ros::Publisher pub_ab_enable =    nh.advertise<std_msgs::Bool>(topic_ab_enable, 1, true);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
@@ -280,31 +257,38 @@ int main(int argc, char** argv)
     switch (g_current_state)
     {
       case MISSION_LANE:
+        ROS_DEBUG("MISSION_LANE mode");
         mission_lane_step();
         break;
 
       case MISSION_CROSSWALK:
+        ROS_DEBUG("MISSION_CROSSWALK mode changed ");
         mission_crosswalk_step();   // ← 여기 안에서 7초 정지 + 2초 직진
         break;
 
       case MISSION_LABACORN:
+        ROS_DEBUG("MISSION_LABACORN mode changed");
         // 라바콘, 터널 둘 다 이 로직 사용
         mission_labacorn_step();
         break;
 
       case MISSION_GATE:
+        ROS_DEBUG("MISSION_GATE mode changed ");
         mission_gate_step();
         break;
       
       case MISSION_ROTARY:
+        ROS_DEBUG("MISSION_ROTARY mode changed");
         mission_rotary_step();
         break;
 
       case MISSION_PARKING:
+        ROS_DEBUG("MISSION_PARKING mode changed");
         mission_parking_step();
         break;
 
       default:
+        ROS_DEBUG("MISSION_Lane mode changed");
         mission_lane_step();
         break;
     }
