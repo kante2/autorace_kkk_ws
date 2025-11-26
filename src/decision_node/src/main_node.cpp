@@ -62,7 +62,7 @@ bool g_parking_detected    = false;
 bool g_parking_bag_lock    = false;
 int  g_labacorn_count = 0;
 bool g_labacorn_session_active = false;
-ros::Time g_labacorn_session_start;
+ros::Time g_labacorn_on_start_time;
 ros::Time g_labacorn_last_seen;
 // const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃 ** 로직에는 미완,// 먼저 라바콘 도중 끊킴이 없으면 해당 조건문을 추가하지 않아도됨
 bool g_ab_left_detected    = false;
@@ -70,14 +70,15 @@ bool g_ab_right_detected   = false;
 int  g_ab_lock_dir      = -1;                      // -1 none, 0 left, 1 right --> 이거는 ab 표지판 감지한 방향을 고정(래치)해두는 변수이다.
 bool g_ab_action_running   = false;
 
-// rotary / AB 퍼셉션 타이밍 제어
+// rotary 타이밍 제어
 const double k_rotary_hold_sec = 8.0;           // 코칼콘 8초 로직 유지
-const double k_ab_perception_window_sec = 5.0;  // 코칼콘 후, 5초간 유지. 
 bool g_rotary_hold_active = false;
 ros::Time g_rotary_hold_start;
-bool g_ab_perception_window_active = false;
-bool g_ab_perception_enabled = false;
-ros::Time g_ab_perception_start;
+
+// labacorn 감지 안정화 (히스테리시스)
+const double k_labacorn_confirm_sec  = 0.5;     // 이 시간 연속 감지 시에만 미션 진입
+const double k_labacorn_release_sec = 0.5;      // 이 시간 이상 미감지 시 미션 종료
+bool g_labacorn_confirmed = false;              // 안정화된 라바콘 감지 플래그
 
 
 // -------------------- 콜백: 라바콘 감지 --------------------
@@ -145,7 +146,6 @@ int main(int argc, char** argv)
   std::string topic_rotary_detected;
   std::string topic_parking_detected;
   std::string topic_parking_bag_lock;
-  std::string topic_ab_enable;
   std::string topic_ab_left;
   std::string topic_ab_right;
 
@@ -155,7 +155,6 @@ int main(int argc, char** argv)
   pnh.param<std::string>("rotary_detected_topic",topic_rotary_detected,std::string("/rotary_detected"));
   pnh.param<std::string>("parking_detected_topic",topic_parking_detected,std::string("/parking_detected"));
   pnh.param<std::string>("parking_bag_lock_topic", topic_parking_bag_lock,std::string("/parking_bag_lock"));
-  pnh.param<std::string>("ab_enable_topic",topic_ab_enable, std::string("/ab_sign/enable"));
   pnh.param<std::string>("ab_left_topic", topic_ab_left,std::string("/ab_sign/left"));
   pnh.param<std::string>("ab_right_topic",topic_ab_right,std::string("/ab_sign/right"));
 
@@ -168,7 +167,6 @@ int main(int argc, char** argv)
   ros::Subscriber sub_parking_lock = nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
   ros::Subscriber sub_ab_left =     nh.subscribe(topic_ab_left, 1, CB_AB_Left);
   ros::Subscriber sub_ab_right =    nh.subscribe(topic_ab_right, 1, CB_AB_Right);
-  ros::Publisher pub_ab_enable =    nh.advertise<std_msgs::Bool>(topic_ab_enable, 1, true);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
@@ -191,45 +189,47 @@ int main(int argc, char** argv)
     ros::spinOnce();
     const ros::Time now = ros::Time::now();
 
-    // rotary 진입 후 8초간 모드 유지 + 이후 5초간 AB 퍼셉션 활성화
+    // 라바콘 감지 히스테리시스 (연속 on/off 시간 요구)
+    if (g_labacorn_detected)
+    {
+      if (g_labacorn_on_start_time.isZero())
+      {
+        g_labacorn_on_start_time = now;
+      }
+      double on_elapsed = (now - g_labacorn_on_start_time).toSec();
+      if (on_elapsed >= k_labacorn_confirm_sec)
+      {
+        g_labacorn_confirmed = true;
+      }
+      g_labacorn_last_seen = now;
+    }
+    else
+    {
+      if (!g_labacorn_last_seen.isZero())
+      {
+        double off_elapsed = (now - g_labacorn_last_seen).toSec();
+        if (off_elapsed >= k_labacorn_release_sec)
+        {
+          g_labacorn_confirmed = false;
+          g_labacorn_on_start_time = ros::Time(0);
+        }
+      }
+      else
+      {
+        g_labacorn_confirmed = false;
+      }
+    }
+
+    // rotary 진입 후 8초간 모드 유지
     bool rotary_hold_now = false;
     if (g_rotary_hold_active)
     {
       double hold_elapsed = (now - g_rotary_hold_start).toSec();
-      if (hold_elapsed < k_rotary_hold_sec)
-      {
-        rotary_hold_now = true;
-      }
+      if (hold_elapsed < k_rotary_hold_sec) rotary_hold_now = true;
       else
       {
         g_rotary_hold_active = false;
-        g_ab_perception_window_active = true;
-        g_ab_perception_start = now;
-        g_ab_perception_enabled = false;
-        ROS_INFO("[main_node] ROTARY hold finished -> starting AB perception window (%.1fs)",
-                 k_ab_perception_window_sec);
-      }
-    }
-
-    if (g_ab_perception_window_active)
-    {
-      double ab_elapsed = (now - g_ab_perception_start).toSec();
-      if (!g_ab_perception_enabled)
-      {
-        std_msgs::Bool enable_msg;
-        enable_msg.data = true;
-        pub_ab_enable.publish(enable_msg);
-        g_ab_perception_enabled = true;
-        ROS_INFO("[main_node] AB perception enabled (window %.1fs)", k_ab_perception_window_sec);
-      }
-      if (ab_elapsed >= k_ab_perception_window_sec)
-      {
-        std_msgs::Bool disable_msg;
-        disable_msg.data = false;
-        pub_ab_enable.publish(disable_msg);
-        g_ab_perception_window_active = false;
-        g_ab_perception_enabled = false;
-        ROS_INFO("[main_node] AB perception window ended -> disabled");
+        ROS_INFO("[main_node] ROTARY hold finished");
       }
     }
 
@@ -244,18 +244,14 @@ int main(int argc, char** argv)
 
     // -----------------------------
     // 1) 미션 상태 결정 로직
-    //    (우선순위: 게이트 > 횡단보도 > 라바콘 > 기본 차선)
+    //    (우선순위: Parking bag lock > Crosswalk > Gate > Rotary > Labacorn(안정화) > Parking > Lane)
     // -----------------------------
     if (g_parking_bag_lock)                                 g_current_state = MISSION_PARKING;
-    else if (g_gate_detected)                               g_current_state = MISSION_GATE;
     else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
-
-    else if (rotary_hold_now)                               g_current_state = MISSION_ROTARY;
-    else if (g_ab_action_running || g_ab_lock_dir != -1)    g_current_state = MISSION_AB;
-    else if (g_labacorn_detected)                           g_current_state = MISSION_LABACORN;
-    else if (g_rotary_detected)                             g_current_state = MISSION_ROTARY;
+    else if (g_gate_detected)                               g_current_state = MISSION_GATE;
+    else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY;
+    else if (g_labacorn_confirmed)                          g_current_state = MISSION_LABACORN;
     else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
-
     else                                                    g_current_state = MISSION_LANE;
 
     // 상태 변경 시 로그
@@ -267,32 +263,17 @@ int main(int argc, char** argv)
       else if (g_current_state == MISSION_CROSSWALK)  state_name = "CROSSWALK";
       else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY";
       else if (g_current_state == MISSION_PARKING)    state_name = "PARKING";
-      else if (g_current_state == MISSION_AB)         state_name = "AB";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       if (prev_state == MISSION_LABACORN && g_current_state != MISSION_LABACORN) // 라바콘 빠져나가는 부분 디버깅용 ** 
       {
         ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d, ab_lock_dir=%d)",state_name, (int)g_labacorn_detected, g_ab_lock_dir);
       }
-      if (g_current_state == MISSION_AB)
-      {
-        ROS_INFO("[main_node] Entering AB mission (ab_lock_dir=%d, ab_run=%d, L=%d, R=%d)",
-                 g_ab_lock_dir, (int)g_ab_action_running, (int)g_ab_left_detected, (int)g_ab_right_detected);
-      }
       if (g_current_state == MISSION_ROTARY)
       {
         g_rotary_hold_active = true;
         g_rotary_hold_start = now;
-        g_ab_perception_window_active = false;
-        if (g_ab_perception_enabled)
-        {
-          std_msgs::Bool disable_msg;
-          disable_msg.data = false;
-          pub_ab_enable.publish(disable_msg);
-        }
-        g_ab_perception_enabled = false;
-        ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs then AB perception for %.1fs",
-                 k_rotary_hold_sec, k_ab_perception_window_sec);
+        ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs", k_rotary_hold_sec);
       }
 
       // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
@@ -301,25 +282,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
-        ROS_INFO("[main_node] LABACORN entry #%d (AB perception delayed to rotary timer)", g_labacorn_count);
-      }
-      else if (g_current_state == MISSION_AB)
-      {
-        if (g_ab_lock_dir == -1)                             // 미정 --> 좌,우 감지 플래그를 보고 한번 세팅, 
-        {
-          if (g_ab_left_detected) g_ab_lock_dir = 0;         // left detect -> left
-          else if (g_ab_right_detected) g_ab_lock_dir = 1;   // right detect -> right 
-        }
-        if (g_ab_lock_dir == 0)          // LEFT
-        {
-          mission_ab_left_reset();
-          g_ab_action_running = true;
-        }
-        else if (g_ab_lock_dir == 1)     // RIGHT
-        {
-          mission_ab_right_reset();
-          g_ab_action_running = true;
-        }
+        ROS_INFO("[main_node] LABACORN entry #%d (confirmed detect)", g_labacorn_count);
       }
 
       // -------------------------------------
@@ -361,38 +324,6 @@ int main(int argc, char** argv)
       case MISSION_PARKING:
         ROS_DEBUG("MISSION_PARKING mode changed");
         mission_parking_step();
-        break;
-
-      case MISSION_AB:
-        ROS_DEBUG("MISSION_AB mode changed");
-        if (g_ab_lock_dir == 0)
-        {
-          mission_ab_left_step();
-          if (mission_ab_left_done())
-          {
-            g_ab_action_running = false;
-            g_ab_lock_dir = -1;
-            g_ab_left_detected = false;
-            g_ab_right_detected = false;
-            ROS_INFO("[main_node] AB-left finished -> back to lane");
-          }
-        }
-        else if (g_ab_lock_dir == 1)
-        {
-          mission_ab_right_step();
-          if (mission_ab_right_done())
-          {
-            g_ab_action_running = false;
-            g_ab_lock_dir = -1;
-            g_ab_left_detected = false;
-            g_ab_right_detected = false;
-            ROS_INFO("[main_node] AB-right finished -> back to lane");
-          }
-        }
-        else
-        {
-          mission_lane_step();
-        }
         break;
 
       default:
