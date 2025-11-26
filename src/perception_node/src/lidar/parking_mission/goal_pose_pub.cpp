@@ -18,6 +18,13 @@ double normalizeAngle(double a)
   return std::atan2(std::sin(a), std::cos(a));
 }
 
+inline int signWithTol(double v, double tol = 1e-6)
+{
+  if (v > tol) return 1;
+  if (v < -tol) return -1;
+  return 0;
+}
+
 bool lookupBaseHeading(tf2_ros::Buffer& buffer,
                        const std::string& target_frame,
                        const std::string& source_frame,
@@ -120,6 +127,36 @@ GoalResult computeGoalFromLines(const std::vector<LineInfo>& lines,
 
   double goal_x = cx + n_back_x * wall_offset;
   double goal_y = cy + n_back_y * wall_offset;
+
+  // -------------------- 내부 포함성 체크 --------------------
+  // back 라인의 센트로이드를 내부 기준점으로 사용해 각 선의 내부 방향을 결정
+  const int interior_side1 = signWithTol(side1.a * cx + side1.b * cy + side1.c);
+  const int interior_side2 = signWithTol(side2.a * cx + side2.b * cy + side2.c);
+  const int interior_back  = signWithTol(n_back_x * cx + n_back_y * cy);  // back 기준점에서 내부는 back 노멀과 같은 방향
+
+  auto isInsideLine = [](const LineInfo& ln, double x, double y, int interior_sign)
+  {
+    if (interior_sign == 0) return true;  // 불명확하면 패스
+    const double s = ln.a * x + ln.b * y + ln.c;
+    return signWithTol(s) == interior_sign;
+  };
+
+  // goal이 두 측면과 back 라인 내부에 있는지 확인
+  if (!isInsideLine(side1, goal_x, goal_y, interior_side1) ||
+      !isInsideLine(side2, goal_x, goal_y, interior_side2) ||
+      signWithTol(n_back_x * goal_x + n_back_y * goal_y) != interior_back)
+  {
+    return res;  // 내부가 아니면 실패 처리
+  }
+
+  // 평행 두 선 사이에 goal이 실제로 위치하는지 추가 확인 (같은 노멀 방향에서 반대 부호여야 사이에 존재)
+  const double s1_goal = side1.a * goal_x + side1.b * goal_y + side1.c;
+  const double s2_goal = side2.a * goal_x + side2.b * goal_y + side2.c;
+  if (signWithTol(s1_goal) != 0 && signWithTol(s2_goal) != 0 &&
+      signWithTol(s1_goal) == signWithTol(s2_goal))
+  {
+    return res;  // 두 평행선 바깥에 goal이 위치 -> 실패
+  }
 
   res.x = goal_x;
   res.y = goal_y;

@@ -27,17 +27,18 @@ std::string g_lines_marker_topic;
 // 검출 파라미터 (튜닝 가능)
 int    g_ransac_max_lines   = 5;     // RANSAC 시도할 최대 선 개수 (크면 탐색 ↑, 시간 ↑)
 int    g_ransac_max_iters   = 200;   // RANSAC 반복 횟수 (크면 안정 ↑, 시간 ↑)
-double g_ransac_dist_thresh = 0.025; // 점-선 거리 임계 (m), 작게 설정해 좁은 구조에 오버핏
-int    g_ransac_min_inliers = 40;    // 선 인정 최소 인라이어 수, 크면 특정 구조만 통과
-double g_parallel_angle_deg = 4.0;   // 평행 판정 허용 각도 (deg), 작게 설정해 특정 각도에 맞춤
-double g_orth_angle_deg     = 4.0;   // 직교 판정 허용 각도 (deg), 작게 설정해 특정 각도에 맞춤
-int    g_strict_min_inliers = 80;    // U-shape 최종 인정 인라이어 하한, 크면 특정 패턴만 통과
+double g_ransac_dist_thresh = 0.035; // 점-선 거리 임계 (m), 더 느슨하게 잡아 포인트 부족 방지
+int    g_ransac_min_inliers = 25;    // 선 인정 최소 인라이어 수, 포인트 적을 때도 통과하도록 낮춤
+int    g_max_line_inliers   = 100;   // 한 선이 먹을 수 있는 최대 포인트 수 (교선으로 길게 잡히는 것 제한)
+double g_parallel_angle_deg = 7.0;   // 평행 판정 허용 각도 (deg), 실제 각도 편차 반영 위해 완화
+double g_orth_angle_deg     = 7.0;   // 직교 판정 허용 각도 (deg), 실제 각도 편차 반영 위해 완화
+int    g_strict_min_inliers = 50;    // U-shape 최종 인정 인라이어 하한, 미검 방지 위해 낮춤
 
 // 슬롯 크기 파라미터 (튜닝 가능)
-double g_min_width   = 0.5;  // 최소 주차폭 (m) - 50cm 슬롯에 맞춤
-double g_max_width   = 0.65; // 최대 주차폭 (m) - 상한, 초과 시 거부
-double g_min_depth   = 0.4;  // 최소 주차깊이 (m) - 40cm 슬롯에 맞춤
-double g_max_depth   = 0.6;  // 최대 주차깊이 (m) - 상한, 초과 시 거부
+double g_min_width   = 0.40; // 최소 주차폭 (m) - 40cm 이상
+double g_max_width   = 1.60; // 최대 주차폭 (m) - 넉넉히 열어 실제 폭 1m 내외 허용
+double g_min_depth   = 0.30; // 최소 주차깊이 (m) - 30cm 이상
+double g_max_depth   = 1.50; // 최대 주차깊이 (m) - 넉넉히 열어 실제 깊이 허용
 double g_wall_offset = 0.0;  // 벽 기준 목표점 y 오프셋 (m), 필요 시 ±0.05 내 조정
 
 // 상태
@@ -107,6 +108,7 @@ void process()
                                   g_ransac_max_iters,
                                   g_ransac_dist_thresh,
                                   g_ransac_min_inliers,
+                                  g_max_line_inliers,
                                   g_parallel_angle_deg,
                                   g_orth_angle_deg);
 
@@ -190,7 +192,7 @@ void process()
     lines_marker.color.b = 1.0f;
     lines_marker.color.a = 0.8f;
 
-    const double half_len = 2.0;  // 각 선을 +/-2m로 표시
+    const double half_len = 1.0;  // 각 선을 +/-1m로 표시해 시각화 범위를 줄임
     for (std::size_t i = 0; i < lines.size() && i < 3; ++i)
     {
       const auto& ln = lines[i];
@@ -235,18 +237,19 @@ int main(int argc, char **argv)
   pnh.param<std::string>("lines_marker_topic", g_lines_marker_topic, std::string("/parking_lines"));
 
   // --- 튜닝 파라미터 ---
-  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 30);            // 선 탐색 수: ↑ 시 탐색↑/시간↑
-  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 100);           // 반복 횟수: ↑ 시 안정↑/시간↑
-  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.025);  // 점-선 거리 임계: 좁은 구조에 맞춰 엄격
-  pnh.param<int>("ransac_min_inliers", g_ransac_min_inliers, 40);        // 선 인정 최소 점수: 특정 구조만 통과
-  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 4.0);    // 평행 허용 각도: 작은 값으로 특정 각도에 맞춤
-  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 4.0);            // 직교 허용 각도: 작은 값으로 특정 각도에 맞춤
-  pnh.param<int>("strict_min_inliers", g_strict_min_inliers, 80);        // U-shape 최종 인라이어 하한: 높여서 엄격
+  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 5);             // 선 탐색 수: ↑ 시 탐색↑/시간↑
+  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 200);           // 반복 횟수: ↑ 시 안정↑/시간↑
+  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.035);  // 점-선 거리 임계: 느슨하게
+  pnh.param<int>("ransac_min_inliers", g_ransac_min_inliers, 25);        // 선 인정 최소 점수: 낮춰서 미검 방지
+  pnh.param<int>("max_line_inliers", g_max_line_inliers, 100);           // 한 선이 먹을 수 있는 최대 포인트 수
+  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 7.0);    // 평행 허용 각도: 완화
+  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 7.0);            // 직교 허용 각도: 완화
+  pnh.param<int>("strict_min_inliers", g_strict_min_inliers, 50);        // U-shape 최종 인라이어 하한: 낮춤
 
-  pnh.param<double>("min_width", g_min_width, 0.50);  // 최소 주차폭: 50cm 슬롯에 맞춤
-  pnh.param<double>("max_width", g_max_width, 0.65);  // 최대 주차폭: 이보다 넓으면 거부해 오검 줄임
-  pnh.param<double>("min_depth", g_min_depth, 0.40);  // 최소 주차깊이: 40cm 슬롯에 맞춤
-  pnh.param<double>("max_depth", g_max_depth, 0.60);  // 최대 주차깊이: 너무 깊은 구조 거부
+  pnh.param<double>("min_width", g_min_width, 0.40);   // 최소 주차폭: 0.4m 이상
+  pnh.param<double>("max_width", g_max_width, 1.60);   // 최대 주차폭: 1.6m 이하(실제 폭 여유)
+  pnh.param<double>("min_depth", g_min_depth, 0.30);   // 최소 주차깊이: 0.3m 이상
+  pnh.param<double>("max_depth", g_max_depth, 1.50);   // 최대 주차깊이: 1.5m 이하(실제 깊이 여유)
   pnh.param<double>("wall_offset", g_wall_offset, 0.00); // 목표점 y 오프셋: 필요 시 ±0.05 조정
 
   ROS_INFO("[parking_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());

@@ -171,6 +171,7 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
                                                      int ransac_max_iters,
                                                      double ransac_dist_thresh,
                                                      int ransac_min_inliers,
+                                                     int max_line_inliers,
                                                      double parallel_angle_deg,
                                                      double orth_angle_deg)
 {
@@ -186,7 +187,8 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
     points.emplace_back(r * std::cos(angle_rad), r * std::sin(angle_rad));
   }
 
-  if (points.size() < static_cast<std::size_t>(ransac_min_inliers * 3))
+  // 포인트 수가 지나치게 적으면 검출을 중단 (최소 인라이어 수보다 적을 때만 중단)
+  if (points.size() < static_cast<std::size_t>(ransac_min_inliers))
     return {false, {}};
 
   auto lines = extractLinesRansac(points,
@@ -194,6 +196,18 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
                                   ransac_max_iters,
                                   ransac_dist_thresh,
                                   ransac_min_inliers);
+
+  // 선 하나가 너무 많은 포인트를 먹어 감지를 왜곡하는 것을 방지하기 위해 상한 적용
+  if (max_line_inliers > 0)
+  {
+    for (auto& ln : lines)
+    {
+      if (ln.num_inliers > max_line_inliers)
+      {
+        ln.num_inliers = max_line_inliers;
+      }
+    }
+  }
 
   const bool is_u = checkUShape(lines, parallel_angle_deg, orth_angle_deg);
   return {is_u, lines};

@@ -42,6 +42,7 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
                                                      int ransac_max_iters,
                                                      double ransac_dist_thresh,
                                                      int ransac_min_inliers,
+                                                     int max_line_inliers,
                                                      double parallel_angle_deg,
                                                      double orth_angle_deg);
 
