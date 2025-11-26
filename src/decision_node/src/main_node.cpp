@@ -180,6 +180,14 @@ int main(int argc, char** argv)
   while (ros::ok())
   {
     ros::spinOnce();
+    // 디버깅: 상태 결정 전에 주요 플래그 로그 (1초 주기)
+    // ** 
+    ROS_INFO_THROTTLE(1.0,
+                      "[main_node] flags lane->AB debug | ab_run=%d ab_lock=%d L=%d R=%d "
+                      "labacorn=%d gate=%d crosswalk=%d rotary=%d parking=%d bag_lock=%d",
+                      (int)g_ab_action_running, g_ab_lock_dir, (int)g_ab_left_detected, (int)g_ab_right_detected,
+                      (int)g_labacorn_detected, (int)g_gate_detected, (int)g_crosswalk_detected,
+                      (int)g_rotary_detected, (int)g_parking_detected, (int)g_parking_bag_lock);
 
     // -----------------------------
     // 1) 미션 상태 결정 로직
@@ -211,6 +219,11 @@ int main(int argc, char** argv)
       if (prev_state == MISSION_LABACORN && g_current_state != MISSION_LABACORN) // 라바콘 빠져나가는 부분 디버깅용 ** 
       {
         ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d, ab_lock_dir=%d)",state_name, (int)g_labacorn_detected, g_ab_lock_dir);
+      }
+      if (g_current_state == MISSION_AB)
+      {
+        ROS_INFO("[main_node] Entering AB mission (ab_lock_dir=%d, ab_run=%d, L=%d, R=%d)",
+                 g_ab_lock_dir, (int)g_ab_action_running, (int)g_ab_left_detected, (int)g_ab_right_detected);
       }
 
       // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
