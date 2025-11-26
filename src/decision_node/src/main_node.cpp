@@ -70,6 +70,15 @@ bool g_ab_right_detected   = false;
 int  g_ab_lock_dir      = -1;                      // -1 none, 0 left, 1 right --> 이거는 ab 표지판 감지한 방향을 고정(래치)해두는 변수이다.
 bool g_ab_action_running   = false;
 
+// rotary / AB 퍼셉션 타이밍 제어
+const double k_rotary_hold_sec = 8.0;           // 코칼콘 8초 로직 유지
+const double k_ab_perception_window_sec = 5.0;  // 코칼콘 후, 5초간 유지. 
+bool g_rotary_hold_active = false;
+ros::Time g_rotary_hold_start;
+bool g_ab_perception_window_active = false;
+bool g_ab_perception_enabled = false;
+ros::Time g_ab_perception_start;
+
 
 // -------------------- 콜백: 라바콘 감지 --------------------
 void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
@@ -180,6 +189,50 @@ int main(int argc, char** argv)
   while (ros::ok())
   {
     ros::spinOnce();
+    const ros::Time now = ros::Time::now();
+
+    // rotary 진입 후 8초간 모드 유지 + 이후 5초간 AB 퍼셉션 활성화
+    bool rotary_hold_now = false;
+    if (g_rotary_hold_active)
+    {
+      double hold_elapsed = (now - g_rotary_hold_start).toSec();
+      if (hold_elapsed < k_rotary_hold_sec)
+      {
+        rotary_hold_now = true;
+      }
+      else
+      {
+        g_rotary_hold_active = false;
+        g_ab_perception_window_active = true;
+        g_ab_perception_start = now;
+        g_ab_perception_enabled = false;
+        ROS_INFO("[main_node] ROTARY hold finished -> starting AB perception window (%.1fs)",
+                 k_ab_perception_window_sec);
+      }
+    }
+
+    if (g_ab_perception_window_active)
+    {
+      double ab_elapsed = (now - g_ab_perception_start).toSec();
+      if (!g_ab_perception_enabled)
+      {
+        std_msgs::Bool enable_msg;
+        enable_msg.data = true;
+        pub_ab_enable.publish(enable_msg);
+        g_ab_perception_enabled = true;
+        ROS_INFO("[main_node] AB perception enabled (window %.1fs)", k_ab_perception_window_sec);
+      }
+      if (ab_elapsed >= k_ab_perception_window_sec)
+      {
+        std_msgs::Bool disable_msg;
+        disable_msg.data = false;
+        pub_ab_enable.publish(disable_msg);
+        g_ab_perception_window_active = false;
+        g_ab_perception_enabled = false;
+        ROS_INFO("[main_node] AB perception window ended -> disabled");
+      }
+    }
+
     // 디버깅: 상태 결정 전에 주요 플래그 로그 (1초 주기)
     // ** 
     ROS_INFO_THROTTLE(1.0,
@@ -197,7 +250,8 @@ int main(int argc, char** argv)
     else if (g_gate_detected)                               g_current_state = MISSION_GATE;
     else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
 
-    else if (g_ab_action_running || g_ab_lock_dir != -1) g_current_state = MISSION_AB;
+    else if (rotary_hold_now)                               g_current_state = MISSION_ROTARY;
+    else if (g_ab_action_running || g_ab_lock_dir != -1)    g_current_state = MISSION_AB;
     else if (g_labacorn_detected)                           g_current_state = MISSION_LABACORN;
     else if (g_rotary_detected)                             g_current_state = MISSION_ROTARY;
     else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
@@ -225,6 +279,21 @@ int main(int argc, char** argv)
         ROS_INFO("[main_node] Entering AB mission (ab_lock_dir=%d, ab_run=%d, L=%d, R=%d)",
                  g_ab_lock_dir, (int)g_ab_action_running, (int)g_ab_left_detected, (int)g_ab_right_detected);
       }
+      if (g_current_state == MISSION_ROTARY)
+      {
+        g_rotary_hold_active = true;
+        g_rotary_hold_start = now;
+        g_ab_perception_window_active = false;
+        if (g_ab_perception_enabled)
+        {
+          std_msgs::Bool disable_msg;
+          disable_msg.data = false;
+          pub_ab_enable.publish(disable_msg);
+        }
+        g_ab_perception_enabled = false;
+        ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs then AB perception for %.1fs",
+                 k_rotary_hold_sec, k_ab_perception_window_sec);
+      }
 
       // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
       // 2. /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py가 left, right 를 뽑는다.
@@ -232,13 +301,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
-        if (g_labacorn_count == 1) // 여기 디버깅 되는지 체크하는 역할 필요.. -> 중간에 센서 인지에 따라서, 차선로직으로 순간적으로 빠져나올 수도 있다는 문제가 존재.. 
-        {
-          std_msgs::Bool enable_msg;
-          enable_msg.data = true; // 1 -> TRUE,
-          pub_ab_enable.publish(enable_msg);
-          ROS_INFO("[main_node] LABACORN first entry -> enabling AB perception for 8s");
-        }
+        ROS_INFO("[main_node] LABACORN entry #%d (AB perception delayed to rotary timer)", g_labacorn_count);
       }
       else if (g_current_state == MISSION_AB)
       {
