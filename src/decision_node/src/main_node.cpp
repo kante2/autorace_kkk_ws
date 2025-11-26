@@ -82,18 +82,33 @@ void CB_LabacornDetected(const std_msgs::Bool::ConstPtr& msg)
 }
 
 // -------------------- 콜백: 게이트 감지 --------------------
-void CB_GateDetected(const std_msgs::Bool::ConstPtr& msg)         g_gate_detected = msg->data;
+void CB_GateDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_gate_detected = msg->data;
+}
 
 // -------------------- 콜백: 횡단보도 감지 --------------------
-void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)    g_crosswalk_detected = msg->data;
+void CB_CrosswalkDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_crosswalk_detected = msg->data;
+}
 
 
 // -------------------- 콜백: rotary 감지 --------------------
-void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)       g_rotary_detected = msg->data;
+void CB_RotaryDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_rotary_detected = msg->data;
+}
 
-void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)      g_parking_detected = msg->data;
+void CB_ParkingDetected(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_parking_detected = msg->data;
+}
 
-void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)       g_parking_bag_lock = msg->data;
+void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_parking_bag_lock = msg->data;
+}
 
 // -------------------- 콜백: AB 좌/우 감지 --------------------
 void CB_AB_Left(const std_msgs::Bool::ConstPtr& msg)
