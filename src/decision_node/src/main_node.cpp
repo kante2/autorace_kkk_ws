@@ -300,6 +300,38 @@ int main(int argc, char** argv)
         mission_parking_step();
         break;
 
+      case MISSION_AB:
+        ROS_DEBUG("MISSION_AB mode changed");
+        if (g_ab_lock_dir == 0)
+        {
+          mission_ab_left_step();
+          if (mission_ab_left_done())
+          {
+            g_ab_action_running = false;
+            g_ab_lock_dir = -1;
+            g_ab_left_detected = false;
+            g_ab_right_detected = false;
+            ROS_INFO("[main_node] AB-left finished -> back to lane");
+          }
+        }
+        else if (g_ab_lock_dir == 1)
+        {
+          mission_ab_right_step();
+          if (mission_ab_right_done())
+          {
+            g_ab_action_running = false;
+            g_ab_lock_dir = -1;
+            g_ab_left_detected = false;
+            g_ab_right_detected = false;
+            ROS_INFO("[main_node] AB-right finished -> back to lane");
+          }
+        }
+        else
+        {
+          mission_lane_step();
+        }
+        break;
+
       default:
         ROS_DEBUG("MISSION_Lane mode changed");
         mission_lane_step();

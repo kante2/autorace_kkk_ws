@@ -50,8 +50,6 @@ add_executable(main_node
   src/main_node.cpp
   src/mission_lane/mission_lane.cpp
   src/mission_labacorn/mission_labacorn.cpp
-  # ----------
-  src/mission_lane/lane_debug.cpp
   src/mission_gate/mission_gate.cpp
   src/mission_crosswalk/mission_crosswalk.cpp
   src/mission_rotary/mission_rotary.cpp
@@ -75,90 +73,4 @@ add_dependencies(main_node
 target_link_libraries(main_node
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
-)
-
-# 디버그용 crosswalk 단독 노드
-add_executable(crosswalk_main
-  src/mission_crosswalk/crosswalk_debug.cpp
-  src/mission_crosswalk/mission_crosswalk.cpp
-)
-
-target_compile_features(crosswalk_main PRIVATE cxx_std_11)
-
-add_dependencies(crosswalk_main
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-target_link_libraries(crosswalk_main
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-)
-
-# 디버그용 rotary 단독 노드
-add_executable(rotary_main
-  src/mission_rotary/rotary_debug.cpp
-  src/mission_rotary/mission_rotary.cpp
-)
-
-target_compile_features(rotary_main PRIVATE cxx_std_11)
-
-add_dependencies(rotary_main
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-target_link_libraries(rotary_main
-  ${catkin_LIBRARIES}
-)
-
-# 디버그용 parking 단독 노드
-add_executable(parking_main
-  src/mission_parking/parking_debug.cpp
-  src/mission_parking/mission_parking.cpp
-)
-
-target_compile_features(parking_main PRIVATE cxx_std_17)
-
-add_dependencies(parking_main
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-target_link_libraries(parking_main
-  ${catkin_LIBRARIES}
-)
-
-# 디버그용 gate 단독 노드
-add_executable(gate_debug
-  src/mission_gate/gate_debug.cpp
-  src/mission_gate/mission_gate.cpp
-)
-
-target_compile_features(gate_debug PRIVATE cxx_std_11)
-
-add_dependencies(gate_debug
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-target_link_libraries(gate_debug
-  ${catkin_LIBRARIES}
-)
-
-# 디버그용 AB 왼쪽 단독 노드
-add_executable(ab_left_debug
-  src/mission_ab/ab_left_debug.cpp
-  src/mission_ab/mission_ab_left.cpp
-)
-
-target_compile_features(ab_left_debug PRIVATE cxx_std_17)
-
-add_dependencies(ab_left_debug
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-
-target_link_libraries(ab_left_debug
-  ${catkin_LIBRARIES}
 )

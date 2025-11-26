@@ -333,13 +333,13 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("max_curvature", g_max_curv, 1e-3);
 
   // --- Pub/Sub ---
-  g_center_sub    = nh.subscribe(g_topic_center_point,     20, centerCB);
-  g_center_color_sub = nh.subscribe(g_topic_center_color,  10, centerColorCB); // 1124 새로추가
-  g_crosswalk_sub = nh.subscribe(g_is_crosswalk_topic,     10, crosswalkCB);
-  g_curvature_sub = nh.subscribe(g_topic_curvature_center, 10, curvatureCenterCB);
+  g_center_sub    = nh.subscribe(g_topic_center_point,     1, centerCB);
+  g_center_color_sub = nh.subscribe(g_topic_center_color,  1, centerColorCB); // 1124 새로추가
+  g_crosswalk_sub = nh.subscribe(g_is_crosswalk_topic,     1, crosswalkCB);
+  g_curvature_sub = nh.subscribe(g_topic_curvature_center, 1, curvatureCenterCB);
 
-  g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
-  g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
+  g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 1);
+  g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 1);
 
   ROS_INFO("[lane_ctrl] mission_lane_init done");
 }
