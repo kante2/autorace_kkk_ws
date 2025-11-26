@@ -194,7 +194,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     g_pub_crosswalk.publish(cw_msg);
 
     if (g_show_window) {
-      cv::imshow(g_win_bev, bev_binary);
+      // cv::imshow(g_win_bev, bev_binary);
       cv::waitKey(1);
     }
 

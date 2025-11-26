@@ -209,8 +209,8 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
           " (code=" + std::to_string(lc.code) + ")", 24);
 
     if (g_show_window) {
-      cv::imshow(g_win_src, src_vis);
-      cv::imshow(g_win_bev, dbg);
+      // cv::imshow(g_win_src, src_vis);
+      // cv::imshow(g_win_bev, dbg);
       cv::waitKey(1);
     }
 

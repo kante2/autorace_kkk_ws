@@ -79,7 +79,7 @@ target_link_libraries(main_node
 
 # 디버그용 crosswalk 단독 노드
 add_executable(crosswalk_main
-  src/mission_crosswalk/crosswalk_debug.cpp
+  # src/mission_crosswalk/crosswalk_debug.cpp
   src/mission_crosswalk/mission_crosswalk.cpp
 )
 
@@ -97,7 +97,7 @@ target_link_libraries(crosswalk_main
 
 # 디버그용 rotary 단독 노드
 add_executable(rotary_main
-  src/mission_rotary/rotary_debug.cpp
+  # src/mission_rotary/rotary_debug.cpp
   src/mission_rotary/mission_rotary.cpp
 )
 
@@ -114,7 +114,7 @@ target_link_libraries(rotary_main
 
 # 디버그용 parking 단독 노드
 add_executable(parking_main
-  src/mission_parking/parking_debug.cpp
+  # src/mission_parking/parking_debug.cpp
   src/mission_parking/mission_parking.cpp
 )
 
