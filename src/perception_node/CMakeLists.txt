@@ -82,6 +82,8 @@ endfunction()
 # === lane ===
 add_wego_node(lane_node
   src/camera/lane_mission/lane_node.cpp
+  src/camera/lane_mission/lane_center_node.cpp
+  src/camera/lane_mission/lane_color_node.cpp
 )
 
 # Crosswalk perception node
