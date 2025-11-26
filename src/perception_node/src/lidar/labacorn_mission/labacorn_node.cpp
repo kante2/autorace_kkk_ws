@@ -201,9 +201,9 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     for (const auto& c : centroids) {
       double ang = std::atan2(c.y, c.x) * 180.0 / M_PI; // laser 프레임 기준
       if (ang < 0.0) ang += 360.0;
-      if (ang >= 120.0 && ang <= 170.0) {
+      if (ang >= 120.0 && ang <= 160.0) {
         if (sector1.empty()) sector1.push_back(c);
-      } else if (ang >= 190.0 && ang <= 240.0) {
+      } else if (ang >= 200.0 && ang <= 240.0) {
         if (sector2.empty()) sector2.push_back(c);
       }
     }

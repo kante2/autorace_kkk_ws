@@ -37,10 +37,10 @@ double g_roi_left_bot_ratio  = -0.40;
 double g_roi_right_bot_ratio = 1.40;
 
 // HSV 범위 (노란 + 흰색 차선)
-cv::Scalar g_yellow_lower(10, 80, 60);
-cv::Scalar g_yellow_upper(45, 255, 255);
-cv::Scalar g_white_lower(0, 0, 150);
-cv::Scalar g_white_upper(179, 60, 255);
+cv::Scalar g_yellow_lower(18, 100, 110);
+cv::Scalar g_yellow_upper(38, 255, 230);
+// cv::Scalar g_white_lower(0, 0, 150);
+// cv::Scalar g_white_upper(179, 60, 255);
 
 // -------------------- 헬퍼 함수들 --------------------
 void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
@@ -102,7 +102,7 @@ cv::Mat binarizeLanes(const cv::Mat& bgr)
 
   cv::Mat mask_y, mask_w;
   cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
-  cv::inRange(hsv, g_white_lower,  g_white_upper,  mask_w);
+  // cv::inRange(hsv, g_white_lower,  g_white_upper,  mask_w);
 
   cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
   cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);

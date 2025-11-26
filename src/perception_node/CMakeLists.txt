@@ -141,3 +141,11 @@ install(TARGETS
   gate_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+# Python-based perception nodes
+catkin_install_python(
+  PROGRAMS
+    src/ab_sign/traffic_sign.py
+    src/ab_sign/traffic_sign_debugging.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

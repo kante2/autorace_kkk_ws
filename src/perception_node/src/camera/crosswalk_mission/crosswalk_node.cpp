@@ -29,16 +29,16 @@ double g_roi_right_bot_ratio = 1.40;
 // HSV 범위 (노란 + 흰색 차선)
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
-cv::Scalar g_white_lower(0, 0, 130);
-cv::Scalar g_white_upper(179, 40, 255);
+cv::Scalar g_white_lower(0, 0, 170);
+cv::Scalar g_white_upper(179, 60, 255);
 
 // 임계값
 // *********** 디버깅 *****************
 double g_white_ratio_threshold = 0.30;  // 흰색 비율 threshold
 
 // 송도/대회장 전환용 플래그
-bool g_use_yellow = true;
-bool g_use_white  = false;
+bool g_use_yellow = false;
+bool g_use_white  = true;
 
 // --------------------- compute --------------------------
 double computeWhiteRatio(const cv::Mat& binary)
@@ -55,8 +55,7 @@ double computeWhiteRatio(const cv::Mat& binary)
   const double white_ratio = static_cast<double>(total_white) /
                              static_cast<double>(total_pixels);
 
-  ROS_INFO_THROTTLE(1.0, "[crosswalk_node] white_ratio=%.3f thr=%.3f",
-                    white_ratio, g_white_ratio_threshold);
+  ROS_INFO_THROTTLE(1.0, "[crosswalk_node] white_ratio=%.3f thr=%.3f",white_ratio, g_white_ratio_threshold);
   return white_ratio;
 }
 
@@ -220,7 +219,7 @@ int main(int argc, char** argv)
 
   // 파라미터
   pnh.param<bool>("show_window", g_show_window, true);
-  pnh.param<double>("white_ratio_threshold", g_white_ratio_threshold, 0.15);
+  pnh.param<double>("white_ratio_threshold", g_white_ratio_threshold, 0.3);
 
   pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
   pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.22);
@@ -231,8 +230,8 @@ int main(int argc, char** argv)
   // 송도/대회장 전환용 플래그
   //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
   //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
-  pnh.param<bool>("use_yellow_lanes", g_use_yellow, true);
-  pnh.param<bool>("use_white_lanes",  g_use_white,  false);
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  true);
 
   std::string image_topic;
   pnh.param<std::string>("image_topic", image_topic,
