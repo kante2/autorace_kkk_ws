@@ -29,11 +29,12 @@ double g_roi_right_bot_ratio = 1.40;
 // HSV 범위 (노란 + 흰색 차선)
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
-cv::Scalar g_white_lower(0, 0, 150);
-cv::Scalar g_white_upper(179, 60, 255);
+cv::Scalar g_white_lower(0, 0, 130);
+cv::Scalar g_white_upper(179, 40, 255);
 
 // 임계값
-double g_white_ratio_threshold = 0.15;  // 흰색 비율 threshold
+// *********** 디버깅 *****************
+double g_white_ratio_threshold = 0.30;  // 흰색 비율 threshold
 
 // 송도/대회장 전환용 플래그
 bool g_use_yellow = true;
