@@ -47,7 +47,9 @@ bool lookupBaseHeading(tf2_ros::Buffer& buffer,
 GoalResult computeGoalFromLines(const std::vector<LineInfo>& lines,
                                 double min_width,
                                 double min_depth,
-                                double wall_offset)
+                                double wall_offset,
+                                double max_width,
+                                double max_depth)
 {
   GoalResult res;
   if (lines.size() < 3) return res;
@@ -97,9 +99,11 @@ GoalResult computeGoalFromLines(const std::vector<LineInfo>& lines,
 
   const double width = std::abs(side2.c - side1.c);
   if (width < min_width) return res;
+  if (max_width > 0.0 && width > max_width) return res;
 
   const double depth = std::abs(back.c);
   if (depth < min_depth) return res;
+  if (max_depth > 0.0 && depth > max_depth) return res;
 
   double n_back_x = back.a;
   double n_back_y = back.b;

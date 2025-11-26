@@ -24,19 +24,21 @@ std::string g_goal_frame_id;
 std::string g_goal_marker_topic;
 std::string g_lines_marker_topic;
 
-// 검출 파라미터
-int    g_ransac_max_lines   = 5;
-int    g_ransac_max_iters   = 200;
-double g_ransac_dist_thresh = 0.05;
-int    g_ransac_min_inliers = 30;
-double g_parallel_angle_deg = 15.0;
-double g_orth_angle_deg     = 15.0;
-int    g_strict_min_inliers = 60;  // U-shape 인정 위한 추가 인라이어 하한
+// 검출 파라미터 (튜닝 가능)
+int    g_ransac_max_lines   = 5;     // RANSAC 시도할 최대 선 개수 (크면 탐색 ↑, 시간 ↑)
+int    g_ransac_max_iters   = 200;   // RANSAC 반복 횟수 (크면 안정 ↑, 시간 ↑)
+double g_ransac_dist_thresh = 0.025; // 점-선 거리 임계 (m), 작게 설정해 좁은 구조에 오버핏
+int    g_ransac_min_inliers = 40;    // 선 인정 최소 인라이어 수, 크면 특정 구조만 통과
+double g_parallel_angle_deg = 4.0;   // 평행 판정 허용 각도 (deg), 작게 설정해 특정 각도에 맞춤
+double g_orth_angle_deg     = 4.0;   // 직교 판정 허용 각도 (deg), 작게 설정해 특정 각도에 맞춤
+int    g_strict_min_inliers = 80;    // U-shape 최종 인정 인라이어 하한, 크면 특정 패턴만 통과
 
-// 슬롯 크기 파라미터
-double g_min_width   = 0.3;
-double g_min_depth   = 0.5;
-double g_wall_offset = -0.5;
+// 슬롯 크기 파라미터 (튜닝 가능)
+double g_min_width   = 0.5;  // 최소 주차폭 (m) - 50cm 슬롯에 맞춤
+double g_max_width   = 0.65; // 최대 주차폭 (m) - 상한, 초과 시 거부
+double g_min_depth   = 0.4;  // 최소 주차깊이 (m) - 40cm 슬롯에 맞춤
+double g_max_depth   = 0.6;  // 최대 주차깊이 (m) - 상한, 초과 시 거부
+double g_wall_offset = 0.0;  // 벽 기준 목표점 y 오프셋 (m), 필요 시 ±0.05 내 조정
 
 // 상태
 ros::Subscriber g_sub_scan;
@@ -129,7 +131,12 @@ void process()
     return;
   }
 
-  GoalResult goal = computeGoalFromLines(lines, g_min_width, g_min_depth, g_wall_offset);
+  GoalResult goal = computeGoalFromLines(lines,
+                                         g_min_width,
+                                         g_min_depth,
+                                         g_wall_offset,
+                                         g_max_width,
+                                         g_max_depth);
   if (!goal.success)
   {
     g_pub_detected.publish(detected_msg);
@@ -227,17 +234,20 @@ int main(int argc, char **argv)
   pnh.param<std::string>("goal_marker_topic", g_goal_marker_topic, std::string("/parking_goal_marker"));
   pnh.param<std::string>("lines_marker_topic", g_lines_marker_topic, std::string("/parking_lines"));
 
-  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 30);
-  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 100);
-  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.03);
-  pnh.param<int>("ransac_min_inliers", g_ransac_min_inliers, 30);
-  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 5.0);
-  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 5.0);
-  pnh.param<int>("strict_min_inliers", g_strict_min_inliers, 60);
+  // --- 튜닝 파라미터 ---
+  pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 30);            // 선 탐색 수: ↑ 시 탐색↑/시간↑
+  pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 100);           // 반복 횟수: ↑ 시 안정↑/시간↑
+  pnh.param<double>("ransac_dist_thresh", g_ransac_dist_thresh, 0.025);  // 점-선 거리 임계: 좁은 구조에 맞춰 엄격
+  pnh.param<int>("ransac_min_inliers", g_ransac_min_inliers, 40);        // 선 인정 최소 점수: 특정 구조만 통과
+  pnh.param<double>("parallel_angle_deg", g_parallel_angle_deg, 4.0);    // 평행 허용 각도: 작은 값으로 특정 각도에 맞춤
+  pnh.param<double>("orth_angle_deg", g_orth_angle_deg, 4.0);            // 직교 허용 각도: 작은 값으로 특정 각도에 맞춤
+  pnh.param<int>("strict_min_inliers", g_strict_min_inliers, 80);        // U-shape 최종 인라이어 하한: 높여서 엄격
 
-  pnh.param<double>("min_width", g_min_width, 0.6);
-  pnh.param<double>("min_depth", g_min_depth, 0.5);
-  pnh.param<double>("wall_offset", g_wall_offset, 0.03);
+  pnh.param<double>("min_width", g_min_width, 0.50);  // 최소 주차폭: 50cm 슬롯에 맞춤
+  pnh.param<double>("max_width", g_max_width, 0.65);  // 최대 주차폭: 이보다 넓으면 거부해 오검 줄임
+  pnh.param<double>("min_depth", g_min_depth, 0.40);  // 최소 주차깊이: 40cm 슬롯에 맞춤
+  pnh.param<double>("max_depth", g_max_depth, 0.60);  // 최대 주차깊이: 너무 깊은 구조 거부
+  pnh.param<double>("wall_offset", g_wall_offset, 0.00); // 목표점 y 오프셋: 필요 시 ±0.05 조정
 
   ROS_INFO("[parking_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());
   ROS_INFO("[parking_node] publish detected='%s'",
