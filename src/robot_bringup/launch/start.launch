@@ -1,0 +1,63 @@
+<launch>
+  <!-- 공통 옵션 -->
+  <param name="use_sim_time" value="false"/>
+
+  <!-- robot_state_publisher 설정 -->
+  <arg name="model"             default="$(find robot_bringup)/urdf/kkk.xacro"/>
+  <arg name="publish_frequency" default="50.0"/>
+  <arg name="use_gui"           default="false"/>
+
+  <!-- xacro → robot_description -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder $(arg model)"/>
+
+  <!-- TF 퍼블리시 -->
+  <node pkg="robot_state_publisher" type="robot_state_publisher"
+        name="robot_state_publisher" output="screen">
+    <param name="publish_frequency" value="$(arg publish_frequency)"/>
+  </node>
+
+  <!-- joint_state_publisher -->
+  <group unless="$(arg use_gui)">
+    <node pkg="joint_state_publisher" type="joint_state_publisher"
+          name="joint_state_publisher" output="screen">
+      <param name="rate" value="$(arg publish_frequency)"/>
+      <param name="use_gui" value="false"/>
+    </node>
+  </group>
+
+  <group if="$(arg use_gui)">
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui"
+          name="joint_state_publisher_gui" output="screen"/>
+  </group>
+
+  <!-- 센서/모터 브링업 -->
+  <include file="$(find vesc_driver)/launch/vesc_driver_node.launch">
+    <!-- 예시 인자(해당 launch 인자명에 맞게 필요 시 수정)
+    <arg name="port" value="/dev/ttyACM0"/>
+    <arg name="frame_id" value="base_link"/>
+    <arg name="speed_to_erpm_gain" value="4614.0"/>
+    <arg name="steering_angle_to_servo_gain" value="1.0"/>
+    -->
+  </include>
+
+  <include file="$(find bringup)/launch/camera_calibration.launch">
+    <!-- 예시 인자(해당 launch 파일 인자명에 맞게 조정)
+    <arg name="camera_name" value="usb_cam"/>
+    <arg name="image_width"  value="1280"/>
+    <arg name="image_height" value="720"/>
+    <arg name="camera_info_url" value="file:///home/USER/.ros/camera_info/usb_cam.yaml"/>
+    -->
+  </include>
+
+  <include file="$(find rplidar_ros)/launch/rplidar_s1.launch">
+    <!-- 예시 인자(해당 launch 파일 인자명에 맞게 조정)
+    <arg name="serial_port" value="/dev/ttyUSB0"/>
+    <arg name="serial_baudrate" value="256000"/>
+    <arg name="frame_id" value="laser"/>
+    <arg name="inverted" value="false"/>
+    <arg name="angle_compensate" value="true"/>
+    -->
+  </include>
+
+</launch>

@@ -232,7 +232,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
-        if (g_labacorn_count == 1) // 여기 디버깅 되는지 체크하는 역할 필요.. -> 중간에 센서 인지에 따라서, 차선로직으로 순간적으로 빠져나올 수도 있다는 문제가 존재.. 
+        if (g_labacorn_count == 10000) // 여기 디버깅 되는지 체크하는 역할 필요.. -> 중간에 센서 인지에 따라서, 차선로직으로 순간적으로 빠져나올 수도 있다는 문제가 존재.. 
         {
           std_msgs::Bool enable_msg;
           enable_msg.data = true; // 1 -> TRUE,
