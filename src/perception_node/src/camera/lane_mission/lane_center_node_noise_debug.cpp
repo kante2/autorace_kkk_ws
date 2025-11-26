@@ -42,11 +42,26 @@ double g_roi_right_top_ratio = 0.78;
 double g_roi_left_bot_ratio  = -0.40;
 double g_roi_right_bot_ratio = 1.40;
 
-// -------------------- HSV 범위 (노란 차선 전용 튜닝) --------------------
 // 외부 조명 있는 환경에서 "노란 차선만" 강건하게 잡도록 약간 타이트하게 설정
-// 필요하면 H/S/V 값은 직접 다시 튜닝해서 쓰면 됨.
+// 필요하면 H/S/V 값은 직접 다시 튜닝해서 쓰면 됨
+
+// **************** tuning ************************
+// Hue; 색상, Saturation;채도, Value;명도
+// 현재값: (15, 100, 80), (40, 255, 255) -> 10 근처: 삘강 주황, 32~45 초록으로 넘어감
+
+// 디버깅 했던거 정리 최적 범위 찾기(lower 높이고, upper 줄이기)
+// 
+// 1. (18, 80, 70), (32, 230, 230)
+// 2. (15, 80, 70), (30, 255, 230)
+
 cv::Scalar g_yellow_lower(15, 100, 80);   // H, S, V (lower)
 cv::Scalar g_yellow_upper(40, 255, 255);  // H, S, V (upper)
+
+//cv::Scalar g_yellow_lower(18, 80, 70);   // H, S, V (lower)
+//cv::Scalar g_yellow_upper(32, 230, 230);  // H, S, V (upper)
+
+//cv::Scalar g_yellow_lower(15, 80, 70);   // H, S, V (lower)
+//cv::Scalar g_yellow_upper(30, 255, 235);  // H, S, V (upper)
 
 // -------------------- 헬퍼 함수들 --------------------
 void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
@@ -56,7 +71,7 @@ void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
   int x_lt  = static_cast<int>(w * g_roi_left_top_ratio);
   int x_rt  = static_cast<int>(w * g_roi_right_top_ratio);
   int x_lb  = static_cast<int>(w * g_roi_left_bot_ratio);
-  int x_rb  = static_cast<int>(w * g_roi_right_bot_ratio);
+  int x_rb  = static_cast<int>(w * g_roi_right_bot_ratio); 
 
   poly_out.clear();
   poly_out.emplace_back(x_lb, y_bot);
