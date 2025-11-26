@@ -29,6 +29,12 @@ double g_roi_right_bot_ratio = 1.40;
 // HSV 범위 (노란 + 흰색 차선)
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
+// ************
+
+//// 추천 1: 꽤 깔끔한 흰색 위주
+//cv::Scalar g_white_lower(0,   0,   180);
+//cv::Scalar g_white_upper(179, 40,  255);
+
 cv::Scalar g_white_lower(0, 0, 130);
 cv::Scalar g_white_upper(179, 40, 255);
 
@@ -231,8 +237,8 @@ int main(int argc, char** argv)
   // 송도/대회장 전환용 플래그
   //  - 송도:  use_yellow_lanes=true,  use_white_lanes=false
   //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
-  pnh.param<bool>("use_yellow_lanes", g_use_yellow, true);
-  pnh.param<bool>("use_white_lanes",  g_use_white,  false);
+  pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
+  pnh.param<bool>("use_white_lanes",  g_use_white,  true);
 
   std::string image_topic;
   pnh.param<std::string>("image_topic", image_topic,
