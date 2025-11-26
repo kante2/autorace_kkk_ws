@@ -34,7 +34,7 @@ double g_servo_min    = 0.0;
 double g_servo_max    = 1.0;
 double g_servo_sign   = 1.0;       // 필요 시 방향 뒤집기
 double g_right_target_px = 440.0;  // 오른쪽 차선 x 목표
-double g_right_steer_gain = 0.002; // (px 오차) -> [-1,1] 조향 입력
+double g_right_steer_gain = 0.002; // (px 오차) -> [-1,1] 조향 입력 / **이 값을 크게 해서 조향을 높여야 함.
 double g_right_timeout_sec = 0.5;
 
 // 상태

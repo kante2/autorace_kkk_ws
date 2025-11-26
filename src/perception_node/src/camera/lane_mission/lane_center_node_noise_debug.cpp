@@ -496,7 +496,7 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
   } catch (const cv::Exception& e) {
     ROS_WARN("[lane_center_node] OpenCV exception: %s", e.what());
   } catch (const std::exception& e) {
-    ROS_WARN("[lane_center_node] std::exception: %s", e.what());
+    ROS_WARN("[lane_center_nodNANce] std::exception: %s", e.what());
   } catch (...) {
     ROS_WARN("[lane_center_node] unknown exception");
   }

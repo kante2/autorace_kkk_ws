@@ -17,7 +17,7 @@ std::string g_motor_topic;
 std::string g_servo_topic;
 
 // 파라미터
-double g_k_yaw = 0.8;
+double g_k_yaw = 0.9; // 이 값을 올린다.  -> 스티어 게인을 키울수 있다. // 0.8 -> 0.9
 double g_follow_speed_mps = 1.0;
 double g_servo_center = 0.5;
 double g_servo_min = 0.0;
