@@ -30,7 +30,7 @@ double g_roi_right_bot_ratio = 1.40;
 cv::Scalar g_yellow_lower(10, 80, 60);
 cv::Scalar g_yellow_upper(45, 255, 255);
 cv::Scalar g_white_lower(0, 0, 170);
-cv::Scalar g_white_upper(179, 60, 255);
+cv::Scalar g_white_upper(179, 60, 255); // fixed
 
 // 임계값
 // *********** 디버깅 *****************
