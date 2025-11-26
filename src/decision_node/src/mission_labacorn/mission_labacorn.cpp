@@ -69,7 +69,7 @@ void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<std::string>("motor_topic", g_motor_topic, std::string("/commands/motor/speed"));
   pnh.param<std::string>("servo_topic", g_servo_topic, std::string("/commands/servo/position"));
 
-  pnh.param<double>("yaw_gain", g_k_yaw, 7); // 5 good  
+  pnh.param<double>("yaw_gain", g_k_yaw, 10); // 5 good  
   pnh.param<double>("follow_speed_mps", g_follow_speed_mps, 1.0);
   pnh.param<double>("servo_center", g_servo_center, 0.5);
   pnh.param<double>("servo_min", g_servo_min, 0.0);
