@@ -453,3 +453,28 @@ bool mission_AB_left_is_done()
 {
   return g_sequence_done;
 }
+
+// -------------------------------------------------------------
+// main_node.cpp에서 기대하는 snake_case 래퍼들
+// -------------------------------------------------------------
+void mission_ab_left_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
+{
+  mission_AB_left_init(nh, pnh);
+}
+
+void mission_ab_left_step()
+{
+  mission_AB_left_step();
+}
+
+bool mission_ab_left_done()
+{
+  return mission_AB_left_is_done();
+}
+
+void mission_ab_left_reset()
+{
+  g_follow_running = false;
+  g_sequence_done = false;
+  g_follow_start = ros::Time(0);
+}

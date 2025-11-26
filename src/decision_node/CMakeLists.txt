@@ -55,6 +55,8 @@ add_executable(main_node
   src/mission_crosswalk/mission_crosswalk.cpp
   src/mission_rotary/mission_rotary.cpp
   src/mission_parking/mission_parking.cpp
+  src/mission_ab/mission_ab_left.cpp
+  src/mission_ab/mission_ab_right.cpp
   # 필요하면 나중에 이런 것도 추가 가능
   # src/mission_parking.cpp
   # src/mission_rotary.cpp
