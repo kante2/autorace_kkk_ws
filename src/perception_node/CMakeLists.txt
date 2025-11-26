@@ -84,6 +84,16 @@ add_wego_node(lane_node
   src/camera/lane_mission/lane_node.cpp
 )
 
+# Keep individual lane utilities as separate nodes to avoid duplicate
+# symbols (each file has its own main).
+add_wego_node(lane_center_node
+  src/camera/lane_mission/lane_center_node.cpp
+)
+
+add_wego_node(lane_color_node
+  src/camera/lane_mission/lane_color_node.cpp
+)
+
 # Crosswalk perception node
 add_wego_node(crosswalk_node
   src/camera/crosswalk_mission/crosswalk_node.cpp

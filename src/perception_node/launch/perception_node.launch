@@ -1,0 +1,7 @@
+<launch>
+  <!-- Camera-related perception nodes -->
+  <include file="$(find perception_node)/launch/camera_node.launch" />
+
+  <!-- LiDAR-related perception nodes -->
+  <include file="$(find perception_node)/launch/lidar_node.launch" />
+</launch>
