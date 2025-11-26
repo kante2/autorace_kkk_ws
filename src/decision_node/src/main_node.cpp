@@ -64,7 +64,7 @@ int  g_labacorn_count = 0;
 bool g_labacorn_session_active = false;
 ros::Time g_labacorn_session_start;
 ros::Time g_labacorn_last_seen;
-const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃
+// const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃 ** 로직에는 미완,// 먼저 라바콘 도중 끊킴이 없으면 해당 조건문을 추가하지 않아도됨
 bool g_ab_left_detected    = false;
 bool g_ab_right_detected   = false;
 int  g_ab_lock_dir      = -1;                // -1 none, 0 left, 1 right --> 이거는 ab 표지판 감지한 방향을 고정(래치)해두는 변수이다.
