@@ -31,7 +31,7 @@ def load_bgr(path):
 
 def main():
     base = "/root/autorace_kkk_ws/src/perception_node/src/ab_sign"
-    real_path = os.path.join(base, "30.png")
+    real_path = os.path.join(base, "img_test3.png")
 
     real_bgr = load_bgr(real_path)
     real_gray_full = cv2.cvtColor(real_bgr, cv2.COLOR_BGR2GRAY)
@@ -103,7 +103,16 @@ def main():
             cv2.putText(real_bgr, info, (ox, max(oy - 10, 20)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-    cv2.imshow("real", real_bgr)
+    # Resize display-only window to keep it small on screen
+    disp = real_bgr
+    max_w, max_h = 900, 700
+    h, w = disp.shape[:2]
+    scale = min(max_w / float(w), max_h / float(h), 1.0)
+    if scale < 1.0:
+        disp = cv2.resize(disp, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+    cv2.namedWindow("real", cv2.WINDOW_NORMAL)
+    cv2.imshow("real", disp)
 
     # Graceful exit: press ESC/q or close window
     while True:
