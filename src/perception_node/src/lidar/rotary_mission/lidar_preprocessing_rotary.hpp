@@ -92,7 +92,7 @@ inline LidarProcessingResult preprocessLidar(const sensor_msgs::LaserScan &scan_
 
   LidarProcessingResult result;
   for (const auto &sample : masked) {
-    if (sample.distance < 2.5) {
+    if (sample.distance < 1.5) {
       result.angle_ranges_deg.push_back(sample.angle * 180.0 / M_PI);
       result.dist_ranges.push_back(sample.distance);
     }

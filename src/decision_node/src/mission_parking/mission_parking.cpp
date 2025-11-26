@@ -80,7 +80,7 @@ void mission_parking_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<std::string>("motor_topic", g_motor_topic,
                          std::string("/commands/motor/speed"));
   pnh.param<std::string>("bag_path", g_bag_path,
-                         std::string("/root/autorace_kkk_ws/src/bagfiles/rotary.bag"));
+                         std::string("/root/autorace_kkk_ws/src/bagfiles/parking_command.bag"));
   pnh.param<std::string>("bag_lock_topic", g_bag_lock_topic,
                          std::string("/parking_bag_lock"));
   pnh.param<double>("parking_stop_motor_cmd", g_stop_motor_cmd, 0.0);
