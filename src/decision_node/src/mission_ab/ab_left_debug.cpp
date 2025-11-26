@@ -1,5 +1,5 @@
 // ab_left_debug.cpp
-// 단독 실행으로 mission_ab_left 로직을 디버깅하기 위한 노드
+// 단독 실행으로 mission_ab_left 로직을 디버깅하기 위한 node
 
 #include <ros/ros.h>
 
