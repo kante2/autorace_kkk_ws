@@ -20,9 +20,9 @@ void mission_gate_step();
 void mission_crosswalk_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_crosswalk_step();
 
-// missin_rotary.cpp
-void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
-void mission_rotary_step();
+// missin_rotary.cpp (비활성화)
+// void mission_rotary_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+// void mission_rotary_step();
 
 // missin_parking.cpp
 void mission_parking_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
@@ -116,14 +116,14 @@ int main(int argc, char** argv)
   std::string topic_labacorn_detected;
   std::string topic_gate_detected;
   std::string topic_crosswalk_detected;
-  std::string topic_rotary_detected;
+  // std::string topic_rotary_detected;  // ROTARY 비활성화
   std::string topic_parking_detected;
   std::string topic_parking_bag_lock;
 
   pnh.param<std::string>("labacorn_detected_topic", topic_labacorn_detected, std::string("/labacorn_detected"));
   pnh.param<std::string>("gate_detected_topic", topic_gate_detected, std::string("/gate_detected"));
   pnh.param<std::string>("crosswalk_detected_topic", topic_crosswalk_detected, std::string("/crosswalk_detected"));
-  pnh.param<std::string>("rotary_detected_topic",topic_rotary_detected,std::string("/rotary_detected"));
+  // pnh.param<std::string>("rotary_detected_topic",topic_rotary_detected,std::string("/rotary_detected")); // ROTARY 비활성화
   pnh.param<std::string>("parking_detected_topic",topic_parking_detected,std::string("/parking_detected"));
   pnh.param<std::string>("parking_bag_lock_topic", topic_parking_bag_lock,std::string("/parking_bag_lock"));
 
@@ -131,7 +131,7 @@ int main(int argc, char** argv)
   ros::Subscriber sub_labacorn =  nh.subscribe(topic_labacorn_detected, 1, CB_LabacornDetected);
   ros::Subscriber sub_gate =      nh.subscribe(topic_gate_detected, 1, CB_GateDetected);
   ros::Subscriber sub_crosswalk = nh.subscribe(topic_crosswalk_detected, 1, CB_CrosswalkDetected);
-  ros::Subscriber sub_rotary =    nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
+  // ros::Subscriber sub_rotary =    nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected); // ROTARY 비활성화
   ros::Subscriber sub_parking =   nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
   ros::Subscriber sub_parking_lock = nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
 
@@ -140,7 +140,7 @@ int main(int argc, char** argv)
   mission_labacorn_init(nh, pnh);
   mission_gate_init(nh, pnh);
   mission_crosswalk_init(nh, pnh);
-  mission_rotary_init(nh, pnh);
+  // mission_rotary_init(nh, pnh); // ROTARY 비활성화
   mission_parking_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
@@ -208,12 +208,12 @@ int main(int argc, char** argv)
 
     // -----------------------------
     // 1) 미션 상태 결정 로직
-    //    (우선순위: Parking bag lock > Crosswalk > Gate > Rotary > Labacorn(안정화) > Parking > Lane)
+    //    (우선순위: Parking bag lock > Crosswalk > Gate > Labacorn(안정화) > Parking > Lane) // ROTARY 비활성화
     // -----------------------------
     if (g_parking_bag_lock)                                 g_current_state = MISSION_PARKING;
     else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
     else if (g_gate_detected)                               g_current_state = MISSION_GATE;
-    // else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY;
+    // else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY; // ROTARY 비활성화
     else if (g_labacorn_confirmed)                          g_current_state = MISSION_LABACORN;
     // else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
     else                                                    g_current_state = MISSION_LANE;
@@ -225,7 +225,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)        state_name = "LABACORN";
       else if (g_current_state == MISSION_GATE)       state_name = "GATE";
       else if (g_current_state == MISSION_CROSSWALK)  state_name = "CROSSWALK";
-      // else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY";
+      // else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY"; // ROTARY 비활성화
       else if (g_current_state == MISSION_PARKING)    state_name = "PARKING";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
@@ -277,10 +277,10 @@ int main(int argc, char** argv)
         mission_gate_step();
         break;
       
-      case MISSION_ROTARY:
-        ROS_DEBUG("MISSION_ROTARY mode changed");
-        mission_rotary_step();
-        break;
+      // case MISSION_ROTARY: // ROTARY 비활성화
+      //   ROS_DEBUG("MISSION_ROTARY mode changed");
+      //   mission_rotary_step();
+      //   break;
 
       case MISSION_PARKING:
         ROS_DEBUG("MISSION_PARKING mode changed");

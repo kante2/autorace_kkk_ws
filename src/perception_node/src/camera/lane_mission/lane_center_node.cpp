@@ -11,7 +11,7 @@
 #include <cmath>
 #include <algorithm>
 
-#include <std_msgs/Float64.h>
+#include <std_msgs/Float32.h>
 
 // -------------------- 전역 상태 --------------------
 ros::Publisher g_pub_center_point;
@@ -433,8 +433,8 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
       lane_pts = right_centers;
 
     double curvature = computeCurvatureFromCenters(lane_pts);
-    std_msgs::Float64 curv_msg;
-    curv_msg.data = curvature;
+    std_msgs::Float32 curv_msg;
+    curv_msg.data = static_cast<float>(curvature);
     g_pub_curvature.publish(curv_msg);
 
     // 디버그 텍스트
@@ -499,7 +499,7 @@ int main(int argc, char** argv)
   ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 1, imageCB);
 
   g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
-  g_pub_curvature    = nh.advertise<std_msgs::Float64>("/perception/curvature_center", 1);
+  g_pub_curvature    = nh.advertise<std_msgs::Float32>("/perception/curvature_center", 1);
 
   // if (g_show_window) {
   //   cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);

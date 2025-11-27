@@ -80,21 +80,26 @@ else()
   message(WARNING "decision_node: src/main_node.cpp not found; skipping main_node target")
 endif()
 
-# 센서 enable/하드코딩 타이머 노드
-add_executable(mission_node
-  src/mission_node.cpp
-)
+# 센서 enable/하드코딩 타이머 노드 (C++ 버전이 있을 때만 빌드; 기본은 python 스크립트 사용)
+set(MISSION_NODE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/mission_node.cpp)
+if(EXISTS ${MISSION_NODE_SRC})
+  add_executable(mission_node
+    src/mission_node.cpp
+  )
 
-target_compile_features(mission_node PRIVATE cxx_std_17)
+  target_compile_features(mission_node PRIVATE cxx_std_17)
 
-add_dependencies(mission_node
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
+  add_dependencies(mission_node
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+  )
 
-target_link_libraries(mission_node
-  ${catkin_LIBRARIES}
-)
+  target_link_libraries(mission_node
+    ${catkin_LIBRARIES}
+  )
+else()
+  message(WARNING "decision_node: src/mission_node.cpp not found; skipping mission_node target (use mission_node_pyt.py)")
+endif()
 
 # bag enable 신호에 따라 rosbag play를 트리거하는 노드
 add_executable(mission_bag_play
