@@ -38,6 +38,7 @@ std::unique_ptr<ClusterVisualizer> g_visualizer;
 
 double g_motor_cmd = 0.0;
 double g_servo_pos = 0.5;
+bool g_enabled = true;
 
 void enableCB(const std_msgs::Bool::ConstPtr& msg)
 {
@@ -304,6 +305,7 @@ int main(int argc, char **argv)
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/rotary_detected"));
   pnh.param<std::string>("marker_topic", g_marker_topic, std::string("rotary/obstacle_markers"));
   pnh.param<std::string>("centroids_topic", g_centroids_topic, std::string("rotary/centroids"));
+  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/rotary/enable"));
 
   pnh.param<double>("eps", g_eps, 0.3);
   pnh.param<int>("min_pts", g_min_pts,4);

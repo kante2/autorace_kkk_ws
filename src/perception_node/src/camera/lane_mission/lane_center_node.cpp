@@ -185,7 +185,7 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
 
   // 색상 기반 속도 조정 // 1124 새로추가
   if (g_lane_color_code == 1) { // 1124 새로추가
-    speed_cmd 1000;
+    speed_cmd = 1000;
   } else if (g_lane_color_code == 2) { // 1124 새로추가
     speed_cmd = 1500;
   }
@@ -438,4 +438,28 @@ void mission_lane_step()
   // ROS_INFO_THROTTLE(0.5,
   //   "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
   //   (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
+}
+
+// -------------------- main --------------------
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "lane_center_node");
+  ros::NodeHandle nh;
+  ros::NodeHandle pnh("~");
+
+  mission_lane_init(nh, pnh);
+
+  double loop_rate_hz = 30.0;
+  pnh.param<double>("loop_rate_hz", loop_rate_hz, loop_rate_hz);
+  ros::Rate rate(loop_rate_hz);
+
+  ROS_INFO("[lane_center_node] start (rate=%.1f Hz)", loop_rate_hz);
+
+  while (ros::ok()) {
+    ros::spinOnce();
+    mission_lane_step();
+    rate.sleep();
+  }
+
+  return 0;
 }
