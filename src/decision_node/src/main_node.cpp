@@ -251,7 +251,7 @@ int main(int argc, char** argv)
     else if (g_gate_detected)                               g_current_state = MISSION_GATE;
     else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY;
     else if (g_labacorn_confirmed)                          g_current_state = MISSION_LABACORN;
-    else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
+    // else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
     else                                                    g_current_state = MISSION_LANE;
 
     // 상태 변경 시 로그

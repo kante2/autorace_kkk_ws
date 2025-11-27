@@ -97,7 +97,7 @@ class MissionNode:
             Phase("M8_HARD_DRIVE", duration=hard, hard=True),
             Phase("M9_GATE_LIDAR", duration=gate, lidar=True),
             Phase("M10_LANE_CAMERA", duration=cam4, camera=True),
-            Phase("M11_PARKING_LIDAR_BAG", duration=park, lidar=True, bag_parking=True),
+            # Phase("M11_PARKING_LIDAR_BAG", duration=park, lidar=True, bag_parking=True),
         ]
 
         self.current_idx = 0
@@ -187,5 +187,5 @@ if __name__ == "__main__":
     try:
         node = MissionNode()
         rospy.spin()
-    except rospy.ROSInterruptException:
+    except rospy.ROSInterruptException:파킹
         pass

@@ -101,7 +101,7 @@ void mission_rotary_init(ros::NodeHandle &nh, ros::NodeHandle &pnh) {
                          std::string("/rotary_rosback/servo_position"));
   pnh.param<std::string>("rosback_play_command",
                          g_rosback_play_command,
-                         std::string("rosbag play rotary_rosback.bag --clock"));
+                         std::string("rosbag play /root/autorace_kkk_ws/src/decision_node/src/mission_bagfiles/rotary_mission.bag --clock"));
   pnh.param<bool>("auto_play_rosback", g_auto_play_rosback, true);
 
   pnh.param<double>("motor_min_cmd",    g_motor_min_cmd,    0.0);
