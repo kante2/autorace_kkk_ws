@@ -80,6 +80,38 @@ else()
   message(WARNING "decision_node: src/main_node.cpp not found; skipping main_node target")
 endif()
 
+# 센서 enable/하드코딩 타이머 노드
+add_executable(mission_node
+  src/mission_node.cpp
+)
+
+target_compile_features(mission_node PRIVATE cxx_std_17)
+
+add_dependencies(mission_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(mission_node
+  ${catkin_LIBRARIES}
+)
+
+# bag enable 신호에 따라 rosbag play를 트리거하는 노드
+add_executable(mission_bag_play
+  src/mission_bag_play.cpp
+)
+
+target_compile_features(mission_bag_play PRIVATE cxx_std_17)
+
+add_dependencies(mission_bag_play
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+target_link_libraries(mission_bag_play
+  ${catkin_LIBRARIES}
+)
+
 # 차선 추종만 단독으로 실행할 수 있는 간단한 노드
 add_executable(lane_solo
   src/mission_lane/lane_solo.cpp
