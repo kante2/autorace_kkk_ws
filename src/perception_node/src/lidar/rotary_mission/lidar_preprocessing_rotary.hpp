@@ -71,8 +71,8 @@ inline LidarProcessingResult preprocessLidar(const sensor_msgs::LaserScan &scan_
     angle += scan_msg.angle_increment;
   }
 
-  const double lower_bound = 120.0 / 180.0 * M_PI;
-  const double upper_bound = 180.0 / 180.0 * M_PI;  // ignore the right half of the scan
+  const double lower_bound = 180.0 / 180.0 * M_PI;
+  const double upper_bound = 240.0 / 180.0 * M_PI;  // ignore the right half of the scan
 
   struct PolarSample {
     double angle;
