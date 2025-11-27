@@ -19,6 +19,7 @@ ros::Publisher g_pub_white_ratio;  // /perception/white_ratio
 
 bool   g_show_window = true;
 std::string g_win_bev = "crosswalk_bev";
+bool   g_enabled = true;
 
 double g_roi_top_y_ratio     = 0.60;
 double g_roi_left_top_ratio  = 0.22;
@@ -39,6 +40,12 @@ double g_white_ratio_threshold = 0.30;  // 흰색 비율 threshold
 // 송도/대회장 전환용 플래그
 bool g_use_yellow = true;
 bool g_use_white  = false;
+
+// enable 토픽 콜백
+void enableCB(const std_msgs::BoolConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
 
 // --------------------- compute --------------------------
 double computeWhiteRatio(const cv::Mat& binary)
@@ -155,10 +162,12 @@ cv::Mat binarizeLanes(const cv::Mat& bgr)
   return mask;
 }
 
+
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
 {
-  try {
+    if (!g_enabled) return;
+
     cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
     cv::Mat bgr = cv_ptr->image.clone();
     if (bgr.empty()) return;
@@ -197,16 +206,6 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
       // cv::imshow(g_win_bev, bev_binary);
       cv::waitKey(1);
     }
-
-  } catch (const cv_bridge::Exception& e) {
-    ROS_WARN("[crosswalk_node] cv_bridge exception: %s", e.what());
-  } catch (const cv::Exception& e) {
-    ROS_WARN("[crosswalk_node] OpenCV exception: %s", e.what());
-  } catch (const std::exception& e) {
-    ROS_WARN("[crosswalk_node] std::exception: %s", e.what());
-  } catch (...) {
-    ROS_WARN("[crosswalk_node] unknown exception");
-  }
 }
 
 // -------------------- main --------------------
@@ -242,7 +241,12 @@ int main(int argc, char** argv)
                          std::string("/crosswalk_detected"));
   pnh.param<std::string>("white_ratio_topic", white_ratio_topic,
                          std::string("/perception/white_ratio"));
+  std::string enable_topic;
+  pnh.param<std::string>("enable_topic", enable_topic,
+                         std::string("/perception/crosswalk/enable"));
 
+  ros::Subscriber enable_sub =
+      nh.subscribe(enable_topic, 1, enableCB);
   ros::Subscriber img_sub =
       nh.subscribe(image_topic, 2, imageCB);
 

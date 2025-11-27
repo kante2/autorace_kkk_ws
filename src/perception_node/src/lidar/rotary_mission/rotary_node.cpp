@@ -19,6 +19,7 @@ std::string g_scan_topic;
 std::string g_detected_topic;
 std::string g_marker_topic;
 std::string g_centroids_topic;
+std::string g_enable_topic;
 
 double g_eps = 0.3;
 int g_min_pts = 7;
@@ -27,6 +28,7 @@ double g_close_dist = 1.0;  // 이 거리 이내 클러스터 존재 시 감지 
 double g_dynamic_speed_thresh = 0.2;  // 상대 속도 문턱 (m/s)
 double g_match_max_angle_deg = 15.0;  // 이전-현재 클러스터 매칭 허용 각도
 double g_match_max_dist = 1.0;        // 이전-현재 클러스터 매칭 허용 거리 차이 (m)
+bool g_enabled = true;
 
 ros::Subscriber g_sub_scan;
 ros::Publisher g_pub_detected;
@@ -37,6 +39,11 @@ std::unique_ptr<ClusterVisualizer> g_visualizer;
 
 double g_motor_cmd = 0.0;
 double g_servo_pos = 0.5;
+
+void enableCB(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
 
 std::vector<ClusterCentroid> g_prev_centroids;
 ros::Time g_prev_stamp;
@@ -168,6 +175,8 @@ void servoCallback(const std_msgs::Float64::ConstPtr &msg)
 // -------------------- 콜백 --------------------
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
 {
+  if (!g_enabled) return;
+
   const LidarProcessingResult pre = preprocessLidar(*scan_msg);
   DetectionResult det =
       detect(pre.angle_ranges_deg, pre.dist_ranges, g_eps, g_min_pts, g_max_pts);
@@ -265,6 +274,7 @@ int main(int argc, char **argv)
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/rotary_detected"));
   pnh.param<std::string>("marker_topic", g_marker_topic, std::string("rotary/obstacle_markers"));
   pnh.param<std::string>("centroids_topic", g_centroids_topic, std::string("rotary/centroids"));
+  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/rotary/enable"));
 
   pnh.param<double>("eps", g_eps, 0.3);
   pnh.param<int>("min_pts", g_min_pts, 5);
@@ -286,6 +296,7 @@ int main(int argc, char **argv)
   g_pub_centroids = nh.advertise<std_msgs::Float32MultiArray>(g_centroids_topic, 1);
   g_visualizer = std::make_unique<ClusterVisualizer>(g_marker_topic);
 
+  ros::Subscriber enable_sub = nh.subscribe(g_enable_topic, 1, enableCB);
   g_sub_scan = nh.subscribe(g_scan_topic, 1, scanCallback);
   g_sub_motor = nh.subscribe("/commands/motor/speed", 1, motorCallback);
   g_sub_servo = nh.subscribe("/commands/servo/position", 1, servoCallback);

@@ -146,6 +146,5 @@ install(TARGETS
 catkin_install_python(
   PROGRAMS
     src/ab_sign/traffic_sign.py
-    src/ab_sign/traffic_sign_debugging.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 ) ##

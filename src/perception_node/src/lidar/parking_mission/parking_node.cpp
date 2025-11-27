@@ -23,6 +23,7 @@ std::string g_detected_topic;
 std::string g_goal_frame_id;
 std::string g_goal_marker_topic;
 std::string g_lines_marker_topic;
+std::string g_enable_topic;
 
 // 검출 파라미터
 int    g_ransac_max_lines   = 5;
@@ -44,6 +45,12 @@ ros::Publisher  g_pub_detected;
 ros::Publisher  g_pub_goal_marker;
 ros::Publisher  g_pub_lines_marker;
 sensor_msgs::LaserScan::ConstPtr g_last_scan;
+bool g_enabled = true;
+
+void enableCB(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
 
 // -------------------- 헬퍼 --------------------
 void publishDeleteMarkers()
@@ -74,12 +81,18 @@ void publishDeleteMarkers()
 // -------------------- 콜백 --------------------
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr &msg)
 {
+  if (!g_enabled) return;
   g_last_scan = msg;
 }
 
 // -------------------- 메인 루프 처리 --------------------
 void process()
 {
+  if (!g_enabled) {
+    publishDeleteMarkers();
+    return;
+  }
+
   std_msgs::Bool detected_msg;
   detected_msg.data = false;
 
@@ -226,6 +239,7 @@ int main(int argc, char **argv)
   pnh.param<std::string>("goal_frame_id", g_goal_frame_id, std::string("base_link"));
   pnh.param<std::string>("goal_marker_topic", g_goal_marker_topic, std::string("/parking_goal_marker"));
   pnh.param<std::string>("lines_marker_topic", g_lines_marker_topic, std::string("/parking_lines"));
+  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/parking/enable"));
 
   pnh.param<int>("ransac_max_lines", g_ransac_max_lines, 30);
   pnh.param<int>("ransac_max_iters", g_ransac_max_iters, 100);
@@ -247,6 +261,7 @@ int main(int argc, char **argv)
   ROS_INFO("[parking_node] publish lines marker='%s'",
            ros::names::resolve(g_lines_marker_topic).c_str());
 
+  ros::Subscriber enable_sub = nh.subscribe(g_enable_topic, 1, enableCB);
   g_sub_scan = nh.subscribe(g_scan_topic, 1, scanCallback);
   g_pub_detected = nh.advertise<std_msgs::Bool>(g_detected_topic, 1);
   g_pub_goal_marker = nh.advertise<visualization_msgs::Marker>(g_goal_marker_topic, 1);

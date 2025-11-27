@@ -11,6 +11,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <std_msgs/Bool.h>
 
 // -------------------- 전역 상태 --------------------
 ros::Publisher g_pub_center_point;   // 차선 중앙 한 점 (디버그용)
@@ -20,6 +21,7 @@ ros::Publisher g_pub_right_centers;  // 슬라이딩 윈도우 우측 포인트 
 bool g_show_window = true;
 std::string g_win_src = "ab_src_with_roi";
 std::string g_win_bev = "ab_bev_binary_with_windows";
+bool g_enabled = true;
 
 // 파라미터
 double g_lane_width_px = 340.0;   // 차선 폭 (px) - 한쪽만 보일 때 center 보정용
@@ -360,10 +362,17 @@ bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
   return false;
 }
 
+void enableCB(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
+
 // -------------------- 콜백 --------------------
 void imageCB(const sensor_msgs::ImageConstPtr& msg)
 {
   try {
+    if (!g_enabled) return;
+
     cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
     cv::Mat bgr = cv_ptr->image.clone();
     if (bgr.empty()) return;
@@ -503,8 +512,12 @@ int main(int argc, char** argv)
   //  - 대회장: use_yellow_lanes=false, use_white_lanes=true
   pnh.param<bool>("use_yellow_lanes", g_use_yellow, false);
   pnh.param<bool>("use_white_lanes",  g_use_white,  true);
+  std::string enable_topic;
+  pnh.param<std::string>("enable_topic", enable_topic, std::string("/perception/ab/enable"));
 
   // Sub
+  ros::Subscriber enable_sub =
+      nh.subscribe(enable_topic, 1, enableCB);
   ros::Subscriber img_sub =
       nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
 

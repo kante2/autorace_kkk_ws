@@ -20,6 +20,9 @@
 #include <vector>
 #include <algorithm>
 
+// ===== 전역 enable 플래그 =====
+static bool g_enabled = true;
+
 // ================== 기본 타입 ==================
 struct Point2D {
   double x;
@@ -32,6 +35,11 @@ enum GateState {
   GATE_DOWN,
   GATE_UP
 };
+
+static void enableCallback(const std_msgs::BoolConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
 
 // ===== 전역 ROS I/O =====
 static ros::Subscriber g_sub_scan;
@@ -46,6 +54,7 @@ static int    g_min_samples    = 10;     // DBSCAN 최소 점 수
 static double g_gate_stop_dist = 2.0;    // 로봇-게이트 중심 거리 임계값 [m]
 static double g_front_min_deg  = 120.0;  // ROI 각도 시작(deg) - 후방0/전방180 CCW 기준
 static double g_front_max_deg  = 240.0;  // ROI 각도 끝(deg)
+static std::string g_enable_topic;
 
 // 게이트 상태 히스테리시스
 static int g_gate_down_count  = 0;
@@ -326,6 +335,8 @@ static void publishMarker(const std::vector<Point2D>& cluster,
 // ================== Scan Callback ==================
 static void scanCallback(const sensor_msgs::LaserScanConstPtr& scan)
 {
+  if (!g_enabled) return;
+
   std::vector<Point2D> points;
   points.reserve(scan->ranges.size());
 
@@ -430,8 +441,10 @@ int main(int argc, char** argv)
   pnh.param("gate_stop_dist",   g_gate_stop_dist,   g_gate_stop_dist);
   pnh.param("front_min_deg",    g_front_min_deg,    g_front_min_deg);
   pnh.param("front_max_deg",    g_front_max_deg,    g_front_max_deg);
+  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/gate/enable"));
 
   // Pub/Sub
+  ros::Subscriber enable_sub = nh.subscribe<std_msgs::Bool>(g_enable_topic, 1, enableCallback);
   g_sub_scan = nh.subscribe<sensor_msgs::LaserScan>("/scan", 1, scanCallback);
   g_pub_cloud = nh.advertise<sensor_msgs::PointCloud2>("/gate_points", 1);
   g_pub_marker = nh.advertise<visualization_msgs::Marker>("/gate_cluster_marker", 1);

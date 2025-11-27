@@ -1,6 +1,5 @@
 // mission_lane.cpp
 #include <ros/ros.h>
-#include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Bool.h>
@@ -36,15 +35,15 @@ static double g_servo_min    = 0.0;            // [MOD-static]
 static double g_servo_max    = 1.0;            // [MOD-static]
 static double g_steer_sign   = -1.0;           // [MOD-static]
 
-// Control 파라미터
-static double g_max_abs_dx_px   = 83.0;          // [MOD-static]
-static double g_dx_tolerance    = 3.0;           // [MOD-static]
-static double g_steer_gain_base = 1.5;           // 곡률 반영 전 기본 gain [MOD-static]
-static double g_steer_gain_min  = 0.8;           // 직선 부근에서 최소 gain [MOD-static]
-static double g_steer_gain_max  = 2.0;           // 급커브에서 최대 gain [MOD-static]
-static double g_steer_gain      = 1.5;           // 실제 사용 gain (매 프레임 갱신) [MOD-static]
-static double g_alpha_ema       = 0.2;           // [MOD-static]
-static double g_max_delta       = 0.08;          // [MOD-static]
+// Control 파라미터 (기본값 완화)
+static double g_max_abs_dx_px   = 80.0;        // [MOD-static]
+static double g_dx_tolerance    = 8.0;         // [MOD-static]
+static double g_steer_gain_base = 0.8;         // 곡률 반영 전 기본 gain [MOD-static]
+static double g_steer_gain_min  = 0.6;         // 직선 부근에서 최소 gain [MOD-static]
+static double g_steer_gain_max  = 2.0;         // 급커브에서 최대 gain [MOD-static]
+static double g_steer_gain      = 0.8;         // 실제 사용 gain (매 프레임 갱신) [MOD-static]
+static double g_alpha_ema       = 0.2;         // [MOD-static]
+static double g_max_delta       = 0.08;        // [MOD-static]
 
 // 속도 계획
 static double g_base_speed_mps  = 7.0;         // [MOD-static]
@@ -53,7 +52,7 @@ static double g_speed_drop_gain = 0.5;         // [MOD-static]
 
 // 모터 스케일
 static double g_motor_min_cmd = 0.0;           // [MOD-static]
-static double g_motor_max_cmd = 900.0;         // [MOD-static]
+static double g_motor_max_cmd = 1200.0;        // [MOD-static] 900 → 1200으로 통일
 static double g_motor_gain    = 300.0;         // [MOD-static]
 
 // 타임아웃
@@ -82,20 +81,20 @@ static bool      g_crosswalk_timer_running = false;   // [MOD-static]
 static ros::Time g_crosswalk_start_time;              // [MOD-static]
 
 // 곡률 범위 파라미터
-static double g_min_curv = 3e-6;              // [MOD-static]
-static double g_max_curv = 1e-3;              // [MOD-static]
+static double g_min_curv = 5e-6;              // [MOD-static]
+static double g_max_curv = 5e-4;              // [MOD-static]
 
-// PID 파라미터
-static double g_pid_kp = 0.02;               // 1124 새로추가 [MOD-static]
-static double g_pid_ki = 0.0;                // 1124 새로추가 [MOD-static]
-static double g_pid_kd = 0.001;              // 1124 새로추가 [MOD-static]
-static double g_pid_weight = 0.3;            // 1124 새로추가 [MOD-static]
+// PID 파라미터 (기본 weight = 0.0 → 꺼둔 상태)
+static double g_pid_kp = 0.01;               // [MOD-static]
+static double g_pid_ki = 0.0;                // [MOD-static]
+static double g_pid_kd = 0.0001;             // [MOD-static]
+static double g_pid_weight = 0.0;            // [MOD-static] 기본 0.0으로 비활성
 
 // PID 내부 상태
-static double g_pid_integral = 0.0;          // 1124 새로추가 [MOD-static]
-static double g_pid_prev_error = 0.0;        // 1124 새로추가 [MOD-static]
-static ros::Time g_pid_prev_time;            // 1124 새로추가 [MOD-static]
-static bool g_pid_has_prev_t = false;        // 1124 새로추가 [MOD-static]
+static double g_pid_integral    = 0.0;       // [MOD-static]
+static double g_pid_prev_error  = 0.0;       // [MOD-static]
+static ros::Time g_pid_prev_time;            // [MOD-static]
+static bool g_pid_has_prev_t    = false;     // [MOD-static]
 
 // 색상 정보
 static int g_lane_color_code = 0;            // 0 none, 1 red, 2 blue // 1124 새로추가 [MOD-static]
@@ -134,30 +133,49 @@ static double runPID(double error)            // 1124 새로추가 [MOD-static]
 // -------------------- dx 처리 로직 --------------------
 static void processDx(double dx)               // [MOD-static] 이 파일 안에서만 쓰는 함수
 {
+  double abs_dx = std::fabs(dx);
   double err_norm = 0.0;
 
-  if (std::fabs(dx) <= g_dx_tolerance) {
+  // 작은 오차(dead-zone)는 0으로 취급해서 흔들림 줄이기
+  if (abs_dx <= g_dx_tolerance) {
     err_norm = 0.0;
   } else {
     err_norm = clamp(dx / g_max_abs_dx_px, -1.0, 1.0);
   }
 
-  // -1 ~ +1 사이 조향 명령 (tanh 비선형)
-  double steer_raw_base = std::tanh(g_steer_gain * err_norm);
+  // === 1) 비선형 gain: 직선(작은 dx)에서는 약하게, 큰 오차에서 더 세게 ===
+  double gain_scale = 1.0;
+  if (abs_dx < 15.0) {
+    gain_scale = 0.6;   // 중앙 근처 흔들림 억제 (조금만 줄이기)
+  } else if (abs_dx > 35.0) {
+    gain_scale = 1.2;   // 큰 오차/곡선에서 약간 공격적으로
+  }
+  double steer_raw_base = std::tanh(g_steer_gain * gain_scale * err_norm);
 
-  // PID 보정 (dx를 직접 에러로 사용)
-  double u_pid = runPID(dx);                 // px 단위 // 1124 새로추가
-  double steer_pid = clamp(u_pid / g_max_abs_dx_px, -1.0, 1.0); // 1124 새로추가
+  // PID 보정 (기본 weight=0.0 → 사실상 꺼짐)
+  double u_pid = runPID(dx);                 
+  double steer_pid = clamp(u_pid / g_max_abs_dx_px, -1.0, 1.0); 
 
   const double w_base = 1.0;
-  double steer_raw = w_base * steer_raw_base + g_pid_weight * steer_pid; // 1124 새로추가
+  double steer_raw = w_base * steer_raw_base + g_pid_weight * steer_pid;
   steer_raw = clamp(steer_raw, -1.0, 1.0);
 
-  // EMA 스무딩
-  double steer_smooth = g_alpha_ema * steer_raw + (1.0 - g_alpha_ema) * g_prev_steer;
+  // === 2) EMA + delta도 |dx|에 따라 다르게 ===
+  double local_alpha = g_alpha_ema;
+  double local_delta = g_max_delta;
+
+  if (abs_dx < 15.0) {
+    local_alpha = 0.15;   // 중앙 근처: 더 부드럽게
+    local_delta = 0.05;
+  } else if (abs_dx > 35.0) {
+    local_alpha = 0.28;   // 큰 오차/곡선: 더 빠르게
+    local_delta = 0.12;
+  }
+
+  double steer_smooth = local_alpha * steer_raw + (1.0 - local_alpha) * g_prev_steer;
 
   // 한 step당 변화 제한
-  double delta = clamp(steer_smooth - g_prev_steer, -g_max_delta, g_max_delta);
+  double delta = clamp(steer_smooth - g_prev_steer, -local_delta, local_delta);
   double steer_cmd = g_prev_steer + delta;
   g_prev_steer = steer_cmd;
 
@@ -166,9 +184,9 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
                            g_min_speed_mps, g_base_speed_mps);
 
   // 색상 기반 속도 조정 // 1124 새로추가
-  if (g_lane_color_code == 1) { // 1124 새로추가
+  if (g_lane_color_code == 1) { // red
     speed_cmd *= 0.5;
-  } else if (g_lane_color_code == 2) { // 1124 새로추가
+  } else if (g_lane_color_code == 2) { // blue
     speed_cmd = g_base_speed_mps;
   }
 
@@ -176,8 +194,10 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
   g_latest_speed_cmd = speed_cmd;   // m/s 개념
 
   ROS_INFO_THROTTLE(0.5,
-    "[lane_ctrl][CB+PID] dx=%.1fpx errN=%.3f steer=%.3f v=%.2f (steer_gain=%.3f, Kp=%.4f, Ki=%.4f, Kd=%.4f, color=%d)",
-    dx, err_norm, steer_cmd, speed_cmd, g_steer_gain, g_pid_kp, g_pid_ki, g_pid_kd, g_lane_color_code);
+    "[lane_ctrl][CB+PID] dx=%.1fpx |dx|=%.1f errN=%.3f steer=%.3f v=%.2f "
+    "(gain_scale=%.2f, alpha=%.2f, dmax=%.2f, steer_gain=%.3f)",
+    dx, abs_dx, err_norm, steer_cmd, speed_cmd,
+    gain_scale, local_alpha, local_delta, g_steer_gain);
 }
 
 // -------------------- 콜백: center_point_px --------------------
@@ -202,20 +222,20 @@ static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg) // [MOD-s
   processDx(dx);
 }
 
-// -------------------- 콜백: is_crosswalk --------------------
-static void crosswalkCB(const std_msgs::Bool::ConstPtr& msg)          // [MOD-static]
-{
-  g_is_crosswalk = msg->data;
-}
-
 // -------------------- 콜백: center_color --------------------
 static void centerColorCB(const geometry_msgs::PointStamped::ConstPtr& msg) // 1124 새로추가 [MOD-static]
 {
   g_lane_color_code = static_cast<int>(msg->point.x); // 0,1,2(red/blue)
 }
 
+// -------------------- 콜백: is_crosswalk --------------------
+static void crosswalkCB(const std_msgs::Bool::ConstPtr& msg)          // [MOD-static]
+{
+  g_is_crosswalk = msg->data;
+}
+
 // -------------------- 콜백: curvature_center --------------------
-static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg) // [MOD-static]
+static void curvatureCenterCB(const std_msgs::Float64::ConstPtr& msg) // [MOD-static]
 {
   double curv = msg->data;          // 부호는 좌/우 구분, 여기서는 크기만 사용
   double k = std::fabs(curv);
@@ -299,12 +319,12 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<double>("servo_max",    g_servo_max,    1.0);
   pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
-  // Control params
-  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 75.0); // 83,
-  pnh.param<double>("dx_tolerance",  g_dx_tolerance,  8.0);
+  // Control params (기본값들 완화 쪽으로)
+  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 60.0);
+  pnh.param<double>("dx_tolerance",  g_dx_tolerance,  10.0);
   pnh.param<double>("steer_gain",        g_steer_gain_base, 0.8);  // 기본 gain
-  pnh.param<double>("steer_gain_min",    g_steer_gain_min,  0.6);  // 곡률 최소 구간 gain
-  pnh.param<double>("steer_gain_max",    g_steer_gain_max,  2.2);  // 곡률 최대 구간 gain
+  pnh.param<double>("steer_gain_min",    g_steer_gain_min,  1.3);  // 곡률 최소 구간 gain
+  pnh.param<double>("steer_gain_max",    g_steer_gain_max,  1.5);  // 곡률 최대 구간 gain
   g_steer_gain = g_steer_gain_base; // 초기값
   pnh.param<double>("steer_smoothing_alpha", g_alpha_ema, 0.2);
   pnh.param<double>("max_steer_delta_per_cycle", g_max_delta, 0.08);
@@ -316,21 +336,21 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   // 모터 스케일
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
-  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 1200.0);
+  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 1000.0);
   pnh.param<double>("motor_gain",    g_motor_gain,    300.0);
 
-  // PID 파라미터
-  pnh.param<double>("pid_kp", g_pid_kp, 0.01); // 1124 새로추가
-  pnh.param<double>("pid_ki", g_pid_ki, 0.0);  // 1124 새로추가
-  pnh.param<double>("pid_kd", g_pid_kd, 0.0001); // 1124 새로추가
-  pnh.param<double>("pid_weight", g_pid_weight, 0.00); // 1124 새로추가
+  // PID 파라미터 (기본 weight = 0)
+  pnh.param<double>("pid_kp", g_pid_kp, 0.01); 
+  pnh.param<double>("pid_ki", g_pid_ki, 0.0);  
+  pnh.param<double>("pid_kd", g_pid_kd, 0.0001);
+  pnh.param<double>("pid_weight", g_pid_weight, 0.0);
 
   // 타임아웃
   pnh.param<double>("dx_timeout_sec", g_dx_timeout_sec, 1.0);
 
-  // 곡률 범위 파라미터
-  pnh.param<double>("min_curvature", g_min_curv, 3e-6);
-  pnh.param<double>("max_curvature", g_max_curv, 1e-3);
+  // 곡률 범위 파라미터 **
+  pnh.param<double>("min_curvature", g_min_curv, 3e-4);
+  pnh.param<double>("max_curvature", g_max_curv, 9e-4);
 
   // --- Pub/Sub ---
   g_center_sub    = nh.subscribe(g_topic_center_point,     1, centerCB);
@@ -364,8 +384,6 @@ void mission_lane_step()
   } else {
     steer_cmd = 0.0;
     speed_cmd = 0.0;
-    // ROS_INFO_THROTTLE(1.0,
-    //   "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
   }
 
   // ---------------- is_crosswalk 처리 (7초 정지) ----------------
@@ -393,7 +411,7 @@ void mission_lane_step()
   // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
   double steer_norm = clamp(steer_cmd, -1.0, 1.0);
 
-  // 방향 뒤집기
+  // 방향 뒤집기 (필요시 YAML에서 steer_sign=1.0로 바꿔봐도 됨)
   steer_norm *= (-g_steer_sign);
 
   // 0.5 = 직진, ±servo_range 안에서 사용
@@ -415,6 +433,7 @@ void mission_lane_step()
   g_pub_motor.publish(motor_msg);
   g_pub_servo.publish(servo_msg);
 
+  // 필요하면 loop 로그 다시 켜도 됨
   // ROS_INFO_THROTTLE(0.5,
   //   "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
   //   (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);

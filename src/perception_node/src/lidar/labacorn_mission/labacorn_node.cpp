@@ -22,6 +22,7 @@ std::string g_cloud_topic;
 std::string g_detected_topic;
 std::string g_target_topic;
 std::string g_target_frame;
+std::string g_enable_topic;
 
 double g_eps = 0.2;
 int    g_min_samples = 4;
@@ -30,6 +31,7 @@ double g_range_max = 0.9;
 double g_front_min_deg = 60.0;
 double g_front_max_deg = 300.0;
 double g_lane_offset_y = 0.12;
+bool   g_enabled = true;
 
 // -------------------- 전역 Pub --------------------
 ros::Publisher g_pub_marker_arr;
@@ -123,6 +125,11 @@ std::vector<Point2D> computeCentroids(const std::vector<Point2D>& points,
   return out;
 }
 
+void enableCB(const std_msgs::Bool::ConstPtr& msg)
+{
+  g_enabled = msg->data;
+}
+
 // -------------------- 타깃 계산 --------------------
 bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
                    double& target_x, double& target_y)
@@ -178,6 +185,8 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
 // -------------------- 스캔 콜백 --------------------
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
+  if (!g_enabled) return;
+
   // 디버그용 포인트클라우드
   if (g_pub_cloud.getNumSubscribers() > 0)
   {
@@ -320,6 +329,7 @@ int main(int argc, char** argv)
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/labacorn_detected"));
   pnh.param<std::string>("target_topic", g_target_topic, std::string("/labacorn/target"));
   pnh.param<std::string>("target_frame", g_target_frame, std::string("laser"));
+  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/labacorn/enable"));
 
   pnh.param<double>("eps", g_eps, 0.2);
   pnh.param<int>("min_samples", g_min_samples, 3);
@@ -346,6 +356,7 @@ int main(int argc, char** argv)
   g_tf_buffer = std::make_shared<tf2_ros::Buffer>();
   g_tf_listener = std::make_shared<tf2_ros::TransformListener>(*g_tf_buffer);
 
+  ros::Subscriber enable_sub = nh.subscribe(g_enable_topic, 1, enableCB);
   ros::Subscriber scan_sub = nh.subscribe(g_scan_topic, 1, scanCallback);
   ros::spin();
   return 0;

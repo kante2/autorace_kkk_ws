@@ -1,509 +1,441 @@
-// lane_center_node.cpp
+// mission_lane.cpp
 #include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <geometry_msgs/PointStamped.h>
-#include <cv_bridge/cv_bridge.h>
-
-#include <opencv2/opencv.hpp>
-
-#include <string>
-#include <vector>
-#include <cmath>
-#include <algorithm>
-
+#include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
+#include <geometry_msgs/PointStamped.h>
+#include <std_msgs/Bool.h>
+
+#include <cmath>
+#include <string>
+
+// -------------------- 유틸 --------------------
+inline double clamp(double x, double lo, double hi)
+{
+  return (x < lo) ? lo : (x > hi) ? hi : x;
+}
 
 // -------------------- 전역 상태 --------------------
-ros::Publisher g_pub_center_point;
-ros::Publisher g_pub_curvature;   // 곡률 퍼블리셔
+// [MOD-static] : 이 파일 안에서만 쓰는 전역은 static 붙여서
+//               다른 mission_*.cpp 와 이름이 겹쳐도 링크 에러 안 나게 함.
 
-bool g_show_window = true;
-std::string g_win_src = "lane_src_debug";
-std::string g_win_bev = "lane_bev_binary";
+// 토픽 이름들
+static std::string g_topic_center_point;        // [MOD-static]
+static std::string g_topic_dx_px;              // 참고용(실제 구독 X) [MOD-static]
+static std::string g_motor_topic;              // [MOD-static]
+static std::string g_servo_topic;              // [MOD-static]
+static std::string g_is_crosswalk_topic;       // [MOD-static]
+static std::string g_topic_curvature_center;   // [MOD-static]
+static std::string g_topic_center_color;       // 1124 새로추가 [MOD-static]
 
-// 파라미터
-double g_lane_width_px = 340.0;
+// BEV 중심 x 픽셀
+static double g_bev_center_x_px = 320.0;       // [MOD-static]
 
-int    g_num_windows       = 12;
-int    g_window_margin     = 80;
-int    g_minpix_recenter   = 50;
-int    g_min_lane_sep      = 60;
-double g_center_ema_alpha  = 0.8;
+// 서보 스케일
+static double g_servo_center = 0.5;            // [MOD-static]
+static double g_servo_min    = 0.0;            // [MOD-static]
+static double g_servo_max    = 1.0;            // [MOD-static]
+static double g_steer_sign   = -1.0;           // [MOD-static]
 
-double g_roi_top_y_ratio     = 0.60;
-double g_roi_left_top_ratio  = 0.22;
-double g_roi_right_top_ratio = 0.78;
-double g_roi_left_bot_ratio  = -0.40;
-double g_roi_right_bot_ratio = 1.40;
+// Control 파라미터
+static double g_max_abs_dx_px   = 83.0;          // [MOD-static]
+static double g_dx_tolerance    = 3.0;           // [MOD-static]
+static double g_steer_gain_base = 1.5;           // 곡률 반영 전 기본 gain [MOD-static]
+static double g_steer_gain_min  = 0.8;           // 직선 부근에서 최소 gain [MOD-static]
+static double g_steer_gain_max  = 2.0;           // 급커브에서 최대 gain [MOD-static]
+static double g_steer_gain      = 1.5;           // 실제 사용 gain (매 프레임 갱신) [MOD-static]
+static double g_alpha_ema       = 0.2;           // [MOD-static]
+static double g_max_delta       = 0.08;          // [MOD-static]
 
-// HSV 범위 (노란 차선만 사용)
-cv::Scalar g_yellow_lower(18, 100, 110);
-cv::Scalar g_yellow_upper(38, 255, 230);
+// 속도 계획
+static double g_base_speed_mps  = 7.0;         // [MOD-static]
+static double g_min_speed_mps   = 0.8;         // [MOD-static]
+static double g_speed_drop_gain = 0.5;         // [MOD-static]
 
-// -------------------- 헬퍼 함수들 --------------------
-void makeRoiPolygon(int h, int w, std::vector<cv::Point>& poly_out)
+// 모터 스케일
+static double g_motor_min_cmd = 0.0;           // [MOD-static]
+static double g_motor_max_cmd = 900.0;         // [MOD-static]
+static double g_motor_gain    = 300.0;         // [MOD-static]
+
+// 타임아웃
+static double g_dx_timeout_sec = 1.0;          // [MOD-static]
+
+// 퍼블리셔
+static ros::Publisher g_pub_motor;             // [MOD-static]
+static ros::Publisher g_pub_servo;             // [MOD-static]
+
+// 서브스크라이버 (init 안에서 초기화)
+static ros::Subscriber g_center_sub;           // [MOD-static]
+static ros::Subscriber g_center_color_sub;     // 1124 새로추가 [MOD-static]
+static ros::Subscriber g_crosswalk_sub;        // [MOD-static]
+static ros::Subscriber g_curvature_sub;        // [MOD-static]
+
+// 내부 상태
+static double g_prev_steer        = 0.0;       // [MOD-static]
+static double g_latest_steer_cmd  = 0.0;       // [MOD-static]
+static double g_latest_speed_cmd  = 0.0;       // [MOD-static]
+static ros::Time g_last_cb_time;               // [MOD-static]
+static bool g_have_cb_time = false;            // [MOD-static]
+
+// crosswalk 상태
+static bool      g_is_crosswalk            = false;   // [MOD-static]
+static bool      g_crosswalk_timer_running = false;   // [MOD-static]
+static ros::Time g_crosswalk_start_time;              // [MOD-static]
+
+// 곡률 범위 파라미터
+static double g_min_curv = 3e-6;              // [MOD-static]
+static double g_max_curv = 1e-3;              // [MOD-static]
+
+// PID 파라미터
+static double g_pid_kp = 0.02;               // 1124 새로추가 [MOD-static]
+static double g_pid_ki = 0.0;                // 1124 새로추가 [MOD-static]
+static double g_pid_kd = 0.001;              // 1124 새로추가 [MOD-static]
+static double g_pid_weight = 0.3;            // 1124 새로추가 [MOD-static]
+
+// PID 내부 상태
+static double g_pid_integral = 0.0;          // 1124 새로추가 [MOD-static]
+static double g_pid_prev_error = 0.0;        // 1124 새로추가 [MOD-static]
+static ros::Time g_pid_prev_time;            // 1124 새로추가 [MOD-static]
+static bool g_pid_has_prev_t = false;        // 1124 새로추가 [MOD-static]
+
+// 색상 정보
+static int g_lane_color_code = 0;            // 0 none, 1 red, 2 blue // 1124 새로추가 [MOD-static]
+
+// dx 스파이크 필터 // 1124 새로추가
+static double g_prev_dx = 0.0;               // [MOD-static]
+static bool   g_has_prev_dx = false;         // [MOD-static]
+
+// -------------------- PID 한 스텝 계산 --------------------
+static double runPID(double error)            // 1124 새로추가 [MOD-static]
 {
-  int y_top = static_cast<int>(h * g_roi_top_y_ratio);
-  int y_bot = h - 1;
-  int x_lt  = static_cast<int>(w * g_roi_left_top_ratio);
-  int x_rt  = static_cast<int>(w * g_roi_right_top_ratio);
-  int x_lb  = static_cast<int>(w * g_roi_left_bot_ratio);
-  int x_rb  = static_cast<int>(w * g_roi_right_bot_ratio);
+  ros::Time now = ros::Time::now();
+  double dt = 0.0;
 
-  poly_out.clear();
-  poly_out.emplace_back(x_lb, y_bot);
-  poly_out.emplace_back(x_lt, y_top);
-  poly_out.emplace_back(x_rt, y_top);
-  poly_out.emplace_back(x_rb, y_bot);
+  if (g_pid_has_prev_t) {
+    dt = (now - g_pid_prev_time).toSec();
+  }
+  g_pid_prev_time = now;
+  g_pid_has_prev_t = true;
+
+  double P = g_pid_kp * error;
+
+  g_pid_integral += error * dt;
+  double I = g_pid_ki * g_pid_integral;
+
+  double D = 0.0;
+  if (dt > 1e-4) {
+    double diff = (error - g_pid_prev_error) / dt;
+    D = g_pid_kd * diff;
+  }
+  g_pid_prev_error = error;
+
+  return P + I + D;  // px 단위 raw 출력
 }
 
-cv::Mat warpToBev(const cv::Mat& bgr, const std::vector<cv::Point>& roi_poly)
+// -------------------- dx 처리 로직 --------------------
+static void processDx(double dx)               // [MOD-static] 이 파일 안에서만 쓰는 함수
 {
-  int h = bgr.rows;
-  int w = bgr.cols;
+  double abs_dx = std::fabs(dx);
+  double err_norm = 0.0;
 
-  cv::Point2f BL = roi_poly[0];
-  cv::Point2f TL = roi_poly[1];
-  cv::Point2f TR = roi_poly[2];
-  cv::Point2f BR = roi_poly[3];
+  if (abs_dx <= g_dx_tolerance) {
+    err_norm = 0.0;
+  } else {
+    err_norm = clamp(dx / g_max_abs_dx_px, -1.0, 1.0);
+  }
 
-  // y를 프레임 안으로 클리핑
-  BL.y = std::max(0.f, std::min(static_cast<float>(h - 1), BL.y));
-  TL.y = std::max(0.f, std::min(static_cast<float>(h - 1), TL.y));
-  TR.y = std::max(0.f, std::min(static_cast<float>(h - 1), TR.y));
-  BR.y = std::max(0.f, std::min(static_cast<float>(h - 1), BR.y));
+  // === 1) 비선형 gain: 직선(작은 dx)에서는 약하게, 큰 오차에서 더 세게 ===
+  double gain_scale = 1.0;
+  if (abs_dx < 15.0) {
+    gain_scale = 0.5;   // 중앙 근처 흔들림 억제
+  } else if (abs_dx > 35.0) {
+    gain_scale = 1.35;   // 큰 오차/곡선에서 더 공격적으로
+  }
+  double steer_raw_base = std::tanh(g_steer_gain * gain_scale * err_norm);
 
-  std::vector<cv::Point2f> src, dst;
-  src.push_back(BL);
-  src.push_back(TL);
-  src.push_back(TR);
-  src.push_back(BR);
+  // PID 보정 (dx를 직접 에러로 사용)
+  double u_pid = runPID(dx);                 // px 단위 // 1124 새로추가
+  double steer_pid = clamp(u_pid / g_max_abs_dx_px, -1.0, 1.0); // 1124 새로추가
 
-  dst.push_back(cv::Point2f(0,     h - 1));
-  dst.push_back(cv::Point2f(0,     0));
-  dst.push_back(cv::Point2f(w - 1, 0));
-  dst.push_back(cv::Point2f(w - 1, h - 1));
+  const double w_base = 1.0;
+  double steer_raw = w_base * steer_raw_base + g_pid_weight * steer_pid; // 1124 새로추가
+  steer_raw = clamp(steer_raw, -1.0, 1.0);
 
-  cv::Mat M = cv::getPerspectiveTransform(src, dst);
-  cv::Mat bev;
-  cv::warpPerspective(bgr, bev, M, cv::Size(w, h),
-                      cv::INTER_LINEAR,
-                      cv::BORDER_CONSTANT,
-                      cv::Scalar(0, 0, 0));
-  return bev;
+  // === 2) EMA + delta도 |dx|에 따라 다르게 ===
+  double local_alpha = g_alpha_ema;
+  double local_delta = g_max_delta;
+
+  if (abs_dx < 15.0) {
+    local_alpha = 0.15;   // 중앙 근처: 더 부드럽게
+    local_delta = 0.05;
+  } else if (abs_dx > 35.0) {
+    local_alpha = 0.28;   // 큰 오차/곡선: 더 빠르게
+    local_delta = 0.12;
+  }
+
+  double steer_smooth = local_alpha * steer_raw + (1.0 - local_alpha) * g_prev_steer;
+
+  // 한 step당 변화 제한
+  double delta = clamp(steer_smooth - g_prev_steer, -local_delta, local_delta);
+  double steer_cmd = g_prev_steer + delta;
+  g_prev_steer = steer_cmd;
+
+  // 속도: 오차 클수록 줄이기
+  double speed_cmd = clamp(g_base_speed_mps - g_speed_drop_gain * std::fabs(err_norm),
+                           g_min_speed_mps, g_base_speed_mps);
+
+  // 색상 기반 속도 조정 // 1124 새로추가
+  if (g_lane_color_code == 1) { // 1124 새로추가
+    speed_cmd 1000;
+  } else if (g_lane_color_code == 2) { // 1124 새로추가
+    speed_cmd = 1500;
+  }
+
+  g_latest_steer_cmd = steer_cmd;   // -1 ~ +1
+  g_latest_speed_cmd = speed_cmd;   // m/s 개념
+
+  ROS_INFO_THROTTLE(0.5,
+    "[lane_ctrl][CB+PID] dx=%.1fpx |dx|=%.1f errN=%.3f steer=%.3f v=%.2f "
+    "(gain_scale=%.2f, alpha=%.2f, dmax=%.2f, steer_gain=%.3f)",
+    dx, abs_dx, err_norm, steer_cmd, speed_cmd,
+    gain_scale, local_alpha, local_delta, g_steer_gain);
 }
 
-cv::Mat binarizeLanes(const cv::Mat& bgr)
+// -------------------- 콜백: center_point_px --------------------
+static void centerCB(const geometry_msgs::PointStamped::ConstPtr& msg) // [MOD-static]
 {
-  cv::Mat hsv;
-  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
+  // 타임아웃 체크용 시간 저장
+  g_last_cb_time = ros::Time::now();
+  g_have_cb_time = true;
 
-  cv::Mat mask_y;
-  cv::inRange(hsv, g_yellow_lower, g_yellow_upper, mask_y);
+  double cx = msg->point.x;
+  double dx_raw = cx - g_bev_center_x_px;   // 오른쪽이 +, 왼쪽이 -
 
-  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-  cv::morphologyEx(mask_y, mask_y, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 1);
+  // 급점프 프레임 차단 // 1124 새로추가
+  double dx = dx_raw;
+  const double spike_thresh = 80.0; // px 기준
+  if (g_has_prev_dx && std::fabs(dx_raw - g_prev_dx) > spike_thresh) {
+    dx = g_prev_dx;   // 급점프 프레임 완전 무시
+  }
+  g_prev_dx = dx;
+  g_has_prev_dx = true;
 
-  return mask_y;
+  processDx(dx);
 }
 
-void runSlidingWindowCollectCenters(const cv::Mat& binary_mask,
-                                    cv::Mat& debug_img,
-                                    std::vector<cv::Point2f>& left_window_centers,
-                                    std::vector<cv::Point2f>& right_window_centers)
+// -------------------- 콜백: is_crosswalk --------------------
+static void crosswalkCB(const std_msgs::Bool::ConstPtr& msg)          // [MOD-static]
 {
-  int h = binary_mask.rows;
-  int w = binary_mask.cols;
-
-  cv::cvtColor(binary_mask, debug_img, cv::COLOR_GRAY2BGR);
-
-  // 하단 절반 히스토그램
-  cv::Mat lower = binary_mask.rowRange(h / 2, h);
-  cv::Mat hist;
-  cv::reduce(lower, hist, 0, cv::REDUCE_SUM, CV_32S);  // 1 x w
-
-  int midpoint   = w / 2;
-  int left_base  = -1;
-  int right_base = -1;
-
-  // left_base
-  {
-    int max_val = 0;
-    for (int x = 0; x < midpoint; ++x) {
-      int v = hist.at<int>(0, x);
-      if (v > max_val) {
-        max_val = v;
-        left_base = x;
-      }
-    }
-  }
-  // right_base
-  {
-    int max_val = 0;
-    for (int x = midpoint; x < w; ++x) {
-      int v = hist.at<int>(0, x);
-      if (v > max_val) {
-        max_val = v;
-        right_base = x;
-      }
-    }
-  }
-
-  int window_height = h / g_num_windows;
-  int left_current  = left_base;
-  int right_current = right_base;
-
-  std::vector<cv::Point> nz_pts;
-  cv::findNonZero(binary_mask, nz_pts);  // (x,y)
-
-  left_window_centers.clear();
-  right_window_centers.clear();
-
-  std::vector<int> left_indices;
-  std::vector<int> right_indices;
-
-  for (int win = 0; win < g_num_windows; ++win) {
-    int y_low  = h - (win + 1) * window_height;
-    int y_high = h - win * window_height;
-
-    // 창 그리기
-    if (left_current >= 0) {
-      cv::rectangle(debug_img,
-                    cv::Point(left_current - g_window_margin, y_low),
-                    cv::Point(left_current + g_window_margin, y_high),
-                    cv::Scalar(255, 0, 0), 2);
-    }
-    if (right_current >= 0) {
-      cv::rectangle(debug_img,
-                    cv::Point(right_current - g_window_margin, y_low),
-                    cv::Point(right_current + g_window_margin, y_high),
-                    cv::Scalar(255, 0, 0), 2);
-    }
-
-    std::vector<int> good_left;
-    std::vector<int> good_right;
-
-    for (size_t i = 0; i < nz_pts.size(); ++i) {
-      int px = nz_pts[i].x;
-      int py = nz_pts[i].y;
-
-      if (py >= y_low && py < y_high) {
-        if (left_current >= 0 &&
-            px >= left_current - g_window_margin &&
-            px <  left_current + g_window_margin) {
-          good_left.push_back(static_cast<int>(i));
-        }
-        if (right_current >= 0 &&
-            px >= right_current - g_window_margin &&
-            px <  right_current + g_window_margin) {
-          good_right.push_back(static_cast<int>(i));
-        }
-      }
-    }
-
-    // 좌/우 너무 붙으면 한쪽 억제
-    if (left_current >= 0 && right_current >= 0) {
-      if (std::abs(left_current - right_current) < g_min_lane_sep) {
-        if (good_left.size() < good_right.size()) {
-          good_left.clear();
-        } else {
-          good_right.clear();
-        }
-      }
-    }
-
-    left_indices.insert(left_indices.end(),  good_left.begin(),  good_left.end());
-    right_indices.insert(right_indices.end(), good_right.begin(), good_right.end());
-
-    int y_center = (y_low + y_high) / 2;
-
-    // left
-    if (!good_left.empty()) {
-      double sum_x = 0.0;
-      for (int idx : good_left) sum_x += nz_pts[idx].x;
-      double x_mean_left = sum_x / good_left.size();
-      left_window_centers.emplace_back(static_cast<float>(x_mean_left),
-                                       static_cast<float>(y_center));
-      cv::circle(debug_img,
-                 cv::Point(static_cast<int>(x_mean_left), y_center),
-                 4, cv::Scalar(0, 0, 255), -1);
-    }
-    // right
-    if (!good_right.empty()) {
-      double sum_x = 0.0;
-      for (int idx : good_right) sum_x += nz_pts[idx].x;
-      double x_mean_right = sum_x / good_right.size();
-      right_window_centers.emplace_back(static_cast<float>(x_mean_right),
-                                        static_cast<float>(y_center));
-      cv::circle(debug_img,
-                 cv::Point(static_cast<int>(x_mean_right), y_center),
-                 4, cv::Scalar(0, 255, 255), -1);
-    }
-
-    // EMA 업데이트
-    if (!good_left.empty() && left_current >= 0) {
-      double sum_x = 0.0;
-      for (int idx : good_left) sum_x += nz_pts[idx].x;
-      double mean_x = sum_x / good_left.size();
-      left_current = static_cast<int>(g_center_ema_alpha * left_current +
-                                      (1.0 - g_center_ema_alpha) * mean_x);
-    }
-    if (!good_right.empty() && right_current >= 0) {
-      double sum_x = 0.0;
-      for (int idx : good_right) sum_x += nz_pts[idx].x;
-      double mean_x = sum_x / good_right.size();
-      right_current = static_cast<int>(g_center_ema_alpha * right_current +
-                                       (1.0 - g_center_ema_alpha) * mean_x);
-    }
-  }
-
-  // 색칠 (디버그)
-  for (int idx : left_indices) {
-    int px = std::max(0, std::min(w - 1, nz_pts[idx].x));
-    int py = std::max(0, std::min(h - 1, nz_pts[idx].y));
-    debug_img.at<cv::Vec3b>(py, px) = cv::Vec3b(0, 0, 255);
-  }
-  for (int idx : right_indices) {
-    int px = std::max(0, std::min(w - 1, nz_pts[idx].x));
-    int py = std::max(0, std::min(h - 1, nz_pts[idx].y));
-    debug_img.at<cv::Vec3b>(py, px) = cv::Vec3b(0, 255, 0);
-  }
+  g_is_crosswalk = msg->data;
 }
 
-bool computeCenterPoint(const std::vector<cv::Point2f>& left_window_centers,
-                        const std::vector<cv::Point2f>& right_window_centers,
-                        cv::Point2f& center_out)
+// -------------------- 콜백: center_color --------------------
+static void centerColorCB(const geometry_msgs::PointStamped::ConstPtr& msg) // 1124 새로추가 [MOD-static]
 {
-  auto side_mean = [](const std::vector<cv::Point2f>& centers,
-                      double& y_mean, double& x_mean) -> bool
-  {
-    if (centers.empty()) return false;
-    double sy = 0.0, sx = 0.0;
-    for (const auto& p : centers) {
-      sx += p.x;
-      sy += p.y;
-    }
-    y_mean = sy / centers.size();
-    x_mean = sx / centers.size();
-    return true;
-  };
-
-  double left_y = 0.0, left_x = 0.0;
-  double right_y = 0.0, right_x = 0.0;
-
-  bool has_left  = side_mean(left_window_centers,  left_y,  left_x);
-  bool has_right = side_mean(right_window_centers, right_y, right_x);
-
-  double half_w = 0.5 * g_lane_width_px;
-
-  if (has_left && has_right) {
-    double cy = 0.5 * (left_y + right_y);
-    double cx = 0.5 * (left_x + right_x);
-    center_out = cv::Point2f(static_cast<float>(cx),
-                             static_cast<float>(cy));
-    return true;
-  }
-
-  if (has_left) {
-    double cy = left_y;
-    double cx = left_x + half_w;
-    center_out = cv::Point2f(static_cast<float>(cx),
-                             static_cast<float>(cy));
-    return true;
-  }
-
-  if (has_right) {
-    double cy = right_y;
-    double cx = right_x - half_w;
-    center_out = cv::Point2f(static_cast<float>(cx),
-                             static_cast<float>(cy));
-    return true;
-  }
-
-  return false;
+  g_lane_color_code = static_cast<int>(msg->point.x); // 0,1,2(red/blue)
 }
 
-// 간단한 곡률 계산 (폴리라인의 대표 3점으로 근사)
-double computeCurvatureFromCenters(const std::vector<cv::Point2f>& centers)
+// -------------------- 콜백: curvature_center --------------------
+static void curvatureCenterCB(const std_msgs::Float32::ConstPtr& msg) // [MOD-static]
 {
-  if (centers.size() < 3) {
-    return 0.0;
+  double curv = msg->data;          // 부호는 좌/우 구분, 여기서는 크기만 사용
+  double k = std::fabs(curv);
+
+  if (g_max_curv <= g_min_curv) {
+    ROS_WARN_THROTTLE(1.0,
+      "[lane_ctrl] invalid curvature range (min >= max), use base gain");
+    g_steer_gain = g_steer_gain_base;
+    return;
   }
 
-  cv::Point2f p1 = centers.front();
-  cv::Point2f p2 = centers[centers.size() / 2];
-  cv::Point2f p3 = centers.back();
+  // 1) 곡률 크기 클램프
+  double k_clamped = clamp(k, g_min_curv, g_max_curv);
 
-  double x1 = p1.x, y1 = p1.y;
-  double x2 = p2.x, y2 = p2.y;
-  double x3 = p3.x, y3 = p3.y;
+  // 2) 0~1 노멀라이즈
+  double t = (k_clamped - g_min_curv) / (g_max_curv - g_min_curv);
+  t = clamp(t, 0.0, 1.0);
 
-  double a = std::hypot(x2 - x1, y2 - y1);
-  double b = std::hypot(x3 - x2, y3 - y2);
-  double c = std::hypot(x3 - x1, y3 - y1);
+  // 3) 보간하여 현재 steer_gain 계산 (누적X, 매번 계산)
+  g_steer_gain = g_steer_gain_min + t * (g_steer_gain_max - g_steer_gain_min);
 
-  double area2 = (x2 - x1)*(y3 - y1) - (y2 - y1)*(x3 - x1); // 2*area with sign
-  double A = std::fabs(area2) * 0.5;
-
-  if (A < 1e-6 || a < 1e-6 || b < 1e-6 || c < 1e-6) {
-    return 0.0;
-  }
-
-  double R = (a * b * c) / (4.0 * A);
-  double kappa = 1.0 / R;
-
-  // 방향에 따라 부호 (좌회전/우회전)
-  double sign = (area2 > 0.0) ? 1.0 : -1.0;
-  return sign * kappa;
+  ROS_INFO_THROTTLE(0.5,
+    "[lane_ctrl] center_curv=%.4e |k|=%.4e t=%.3f -> steer_gain=%.3f (range=%.3f~%.3f)",
+    curv, k, t, g_steer_gain, g_steer_gain_min, g_steer_gain_max);
 }
 
-// -------------------- 콜백 --------------------
-void imageCB(const sensor_msgs::ImageConstPtr& msg)
+
+// =====================================================
+// ★ main_node.cpp 에서 부를 함수들 ★
+// =====================================================
+
+void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-  try {
-    cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, "bgr8");
-    cv::Mat bgr = cv_ptr->image.clone();
-    if (bgr.empty()) return;
+  ROS_INFO("[lane_ctrl] mission_lane_init()");
 
-    if (bgr.channels() == 1) {
-      cv::cvtColor(bgr, bgr, cv::COLOR_GRAY2BGR);
-    }
+  // --- 파라미터 로드 ---
 
-    int h = bgr.rows;
-    int w = bgr.cols;
+  // Topics
+  pnh.param<std::string>("topic_center_point",
+                         g_topic_center_point,
+                         std::string("/perception/center_point_px"));
+  pnh.param<std::string>("topic_dx_px", g_topic_dx_px,
+                         std::string("/perception/dx_px")); // 참고용
 
-    // 카메라 프레임 중심 (디버그)
-    int cx_cam = w / 2;
-    int cy_cam = h / 2;
+  pnh.param<std::string>("motor_topic", g_motor_topic,
+                         std::string("/commands/motor/speed"));
+  pnh.param<std::string>("servo_topic", g_servo_topic,
+                         std::string("/commands/servo/position"));
+  pnh.param<std::string>("topic_center_color",
+                         g_topic_center_color,
+                         std::string("/perception/center_color_px")); // 1124 새로추가
 
-    // 1) ROI 폴리곤 & 시각화
-    std::vector<cv::Point> roi_poly_pts;
-    makeRoiPolygon(h, w, roi_poly_pts);
+  // is_crosswalk topic
+  pnh.param<std::string>("is_crosswalk_topic",
+                         g_is_crosswalk_topic,
+                         std::string("/perception/is_crosswalk"));
 
-    cv::Mat src_vis = bgr.clone();
-    cv::Mat overlay = bgr.clone();
-    std::vector<std::vector<cv::Point>> polys;
-    polys.push_back(roi_poly_pts);
-    cv::fillPoly(overlay, polys, cv::Scalar(0, 255, 0));
-    cv::addWeighted(overlay, 0.25, bgr, 0.75, 0.0, src_vis);
-    cv::polylines(src_vis, polys, true, cv::Scalar(0, 0, 0), 2);
+  // curvature_center topic
+  pnh.param<std::string>("topic_curvature_center",
+                         g_topic_curvature_center,
+                         std::string("/perception/curvature_center"));
 
-    // 카메라 프레임 중심 표시 (보라색 점)
-    cv::circle(src_vis, cv::Point(cx_cam, cy_cam), 6, cv::Scalar(255, 0, 255), -1);
+  ROS_INFO("[lane_ctrl] subscribe center='%s'",
+           ros::names::resolve(g_topic_center_point).c_str());
+  ROS_INFO("[lane_ctrl] subscribe center_color='%s'",
+           ros::names::resolve(g_topic_center_color).c_str()); // 1124 새로추가
+  ROS_INFO("[lane_ctrl] subscribe is_crosswalk='%s'",
+           ros::names::resolve(g_is_crosswalk_topic).c_str());
+  ROS_INFO("[lane_ctrl] subscribe curvature_center='%s'",
+           ros::names::resolve(g_topic_curvature_center).c_str());
+  ROS_INFO("[lane_ctrl] publish motor='%s', servo='%s'",
+           ros::names::resolve(g_motor_topic).c_str(),
+           ros::names::resolve(g_servo_topic).c_str());
 
-    // 2) BEV
-    cv::Mat bev_bgr = warpToBev(bgr, roi_poly_pts);
+  // BEV 중심 x
+  pnh.param<double>("bev_center_x_px", g_bev_center_x_px, 320.0);
 
-    // 3) 이진화
-    cv::Mat bev_binary = binarizeLanes(bev_bgr);
+  // 서보 스케일
+  pnh.param<double>("servo_center", g_servo_center, 0.5);
+  pnh.param<double>("servo_min",    g_servo_min,    0.0);
+  pnh.param<double>("servo_max",    g_servo_max,    1.0);
+  pnh.param<double>("steer_sign",   g_steer_sign,  -1.0);
 
-    // 4) 슬라이딩 윈도우
-    cv::Mat debug_img;
-    std::vector<cv::Point2f> left_centers, right_centers;
-    runSlidingWindowCollectCenters(bev_binary, debug_img,
-                                   left_centers, right_centers);
+  // Control params
+  pnh.param<double>("max_abs_dx_px", g_max_abs_dx_px, 60.0); // 83,
+  pnh.param<double>("dx_tolerance",  g_dx_tolerance,  8.0);
+  pnh.param<double>("steer_gain",        g_steer_gain_base, 0.8);  // 기본 gain
+  pnh.param<double>("steer_gain_min",    g_steer_gain_min,  0.6);  // 곡률 최소 구간 gain
+  pnh.param<double>("steer_gain_max",    g_steer_gain_max,  2.2);  // 곡률 최대 구간 gain
+  g_steer_gain = g_steer_gain_base; // 초기값
+  pnh.param<double>("steer_smoothing_alpha", g_alpha_ema, 0.2);
+  pnh.param<double>("max_steer_delta_per_cycle", g_max_delta, 0.08);
 
-    // 5) 차선 중심 퍼블리시
-    cv::Point2f center_pt;
-    if (computeCenterPoint(left_centers, right_centers, center_pt)) {
-      geometry_msgs::PointStamped pt_msg;
-      pt_msg.header = msg->header;
-      pt_msg.header.frame_id = "bev";
-      pt_msg.point.x = center_pt.x;
-      pt_msg.point.y = center_pt.y;
-      pt_msg.point.z = 0.0;
-      g_pub_center_point.publish(pt_msg);
+  // 속도 계획
+  pnh.param<double>("base_speed_mps",  g_base_speed_mps,  7.0);
+  pnh.param<double>("min_speed_mps",   g_min_speed_mps,   0.8);
+  pnh.param<double>("speed_drop_gain", g_speed_drop_gain, 0.5);
 
-      cv::circle(debug_img,
-                 cv::Point(static_cast<int>(center_pt.x),
-                           static_cast<int>(center_pt.y)),
-                 6, cv::Scalar(255, 0, 255), -1);
-    }
+  // 모터 스케일
+  pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
+  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 1200.0);
+  pnh.param<double>("motor_gain",    g_motor_gain,    300.0);
 
-    // 6) 곡률 계산 (좌/우 중 포인트 많은 쪽 기준)
-    std::vector<cv::Point2f> lane_pts;
-    if (left_centers.size() >= right_centers.size())
-      lane_pts = left_centers;
-    else
-      lane_pts = right_centers;
+  // PID 파라미터
+  pnh.param<double>("pid_kp", g_pid_kp, 0.01); // 1124 새로추가
+  pnh.param<double>("pid_ki", g_pid_ki, 0.0);  // 1124 새로추가
+  pnh.param<double>("pid_kd", g_pid_kd, 0.0001); // 1124 새로추가
+  pnh.param<double>("pid_weight", g_pid_weight, 0.00); // 1124 새로추가
 
-    double curvature = computeCurvatureFromCenters(lane_pts);
-    std_msgs::Float64 curv_msg;
-    curv_msg.data = curvature;
-    g_pub_curvature.publish(curv_msg);
+  // 타임아웃
+  pnh.param<double>("dx_timeout_sec", g_dx_timeout_sec, 1.0);
 
-    // 디버그 텍스트
-    auto put = [&](const std::string& txt, int y)
-    {
-      cv::putText(debug_img, txt, cv::Point(10, y),
-                  cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                  cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-    };
-    put("Left centers:  " + std::to_string(left_centers.size()), 24);
-    put("Right centers: " + std::to_string(right_centers.size()), 48);
-    put("Curvature (px^-1): " + std::to_string(curvature), 72);
+  // 곡률 범위 파라미터
+  pnh.param<double>("min_curvature", g_min_curv, 5e-6);
+  pnh.param<double>("max_curvature", g_max_curv, 5e-4);
 
-    // 7) 화면 출력
-    if (g_show_window) {
-      cv::Mat canvas;
-      cv::Mat src_resized, dbg_resized;
-      cv::resize(src_vis, src_resized, cv::Size(w, h));
-      cv::resize(debug_img, dbg_resized, cv::Size(w, h));
-      cv::hconcat(src_resized, dbg_resized, canvas);
+  // --- Pub/Sub ---
+  g_center_sub    = nh.subscribe(g_topic_center_point,     20, centerCB);
+  g_center_color_sub = nh.subscribe(g_topic_center_color,  10, centerColorCB); // 1124 새로추가
+  g_crosswalk_sub = nh.subscribe(g_is_crosswalk_topic,     10, crosswalkCB);
+  g_curvature_sub = nh.subscribe(g_topic_curvature_center, 10, curvatureCenterCB);
 
-      // cv::imshow(g_win_src, canvas);
-      // cv::imshow(g_win_bev, bev_binary); 
-      cv::waitKey(1);
-    }
+  g_pub_motor = nh.advertise<std_msgs::Float64>(g_motor_topic, 10);
+  g_pub_servo = nh.advertise<std_msgs::Float64>(g_servo_topic, 10);
 
-  } catch (const cv_bridge::Exception& e) {
-    ROS_WARN("[lane_center_node] cv_bridge exception: %s", e.what());
-  } catch (const cv::Exception& e) {
-    ROS_WARN("[lane_center_node] OpenCV exception: %s", e.what());
-  } catch (const std::exception& e) {
-    ROS_WARN("[lane_center_node] std::exception: %s", e.what());
-  } catch (...) {
-    ROS_WARN("[lane_center_node] unknown exception");
-  }
+  ROS_INFO("[lane_ctrl] mission_lane_init done");
 }
 
-// -------------------- main --------------------
-int main(int argc, char** argv)
+// main_node.cpp 의 while 루프 안에서 매 주기마다 호출
+void mission_lane_step()
 {
-  ros::init(argc, argv, "lane_center_node");
-  ros::NodeHandle nh;      // global
-  ros::NodeHandle pnh("~");// private
+  ros::Time now = ros::Time::now();
+  bool have_dx = false;
 
-  // 파라미터 로드
-  pnh.param<bool>("show_window", g_show_window, true);
-  pnh.param<double>("lane_width_px", g_lane_width_px, 340.0);
-
-  pnh.param<int>("num_windows",      g_num_windows,      12);
-  pnh.param<int>("window_margin",    g_window_margin,    80);
-  pnh.param<int>("minpix_recenter",  g_minpix_recenter,  50);
-  pnh.param<int>("min_lane_sep",     g_min_lane_sep,     60);
-  pnh.param<double>("center_ema_alpha", g_center_ema_alpha, 0.8);
-
-  pnh.param<double>("roi_top_y_ratio",     g_roi_top_y_ratio,     0.60);
-  pnh.param<double>("roi_left_top_ratio",  g_roi_left_top_ratio,  0.22);
-  pnh.param<double>("roi_right_top_ratio", g_roi_right_top_ratio, 0.78);
-  pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
-  pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
-
-  // Pub/Sub
-  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
-
-  g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
-  g_pub_curvature    = nh.advertise<std_msgs::Float64>("/perception/curvature_center", 1);
-
-  if (g_show_window) {
-    cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_src, 960, 540);
-    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_bev, 960, 540);
+  if (g_have_cb_time) {
+    double dt = (now - g_last_cb_time).toSec();
+    have_dx = (dt <= g_dx_timeout_sec);
   }
 
-  ROS_INFO("lane_center_node running...");
-  ros::spin();
-  return 0;
+  double steer_cmd = 0.0;
+  double speed_cmd = 0.0;
+
+  if (have_dx) {
+    steer_cmd = g_latest_steer_cmd;  // -1 ~ +1
+    speed_cmd = g_latest_speed_cmd;  // m/s
+  } else {
+    steer_cmd = 0.0;
+    speed_cmd = 0.0;
+    // ROS_INFO_THROTTLE(1.0,
+    //   "[lane_ctrl] waiting /perception/center_point_px ... (timeout)");
+  }
+
+  // ---------------- is_crosswalk 처리 (7초 정지) ----------------
+  if (g_is_crosswalk && !g_crosswalk_timer_running) {
+    g_crosswalk_timer_running = true;
+    g_crosswalk_start_time    = now;
+    ROS_INFO("[lane_ctrl] is_crosswalk TRUE: start 7s hold");
+  }
+
+  if (g_crosswalk_timer_running) {
+    double dt = (now - g_crosswalk_start_time).toSec();
+    if (dt < 7.0) {
+      steer_cmd = 0.0;   // 정지 상태
+      speed_cmd = 0.0;
+
+      ROS_INFO_THROTTLE(1.0,
+        "[lane_ctrl] is_crosswalk: HOLD (t=%.2f/7.0)", dt);
+    } else {
+      g_crosswalk_timer_running = false;
+      ROS_INFO("[lane_ctrl] is_crosswalk: 7s hold finished");
+    }
+  }
+  // -------------------------------------------------------------
+
+  // ---- 1) 조향 변환: -1~+1 -> 서보 0~1 ----
+  double steer_norm = clamp(steer_cmd, -1.0, 1.0);
+
+  // 방향 뒤집기
+  steer_norm *= (-g_steer_sign);
+
+  // 0.5 = 직진, ±servo_range 안에서 사용
+  double servo_range = std::min(g_servo_center - g_servo_min,
+                                g_servo_max - g_servo_center);
+  double servo_hw = g_servo_center + steer_norm * servo_range;
+  servo_hw = clamp(servo_hw, g_servo_min, g_servo_max);
+
+  // ---- 2) 속도 변환: m/s -> 모터 명령 ----
+  double motor_cmd = g_motor_gain * speed_cmd;
+  motor_cmd = clamp(motor_cmd, g_motor_min_cmd, g_motor_max_cmd);
+
+  // ---- 3) Publish ----
+  std_msgs::Float64 motor_msg;
+  std_msgs::Float64 servo_msg;
+  motor_msg.data = motor_cmd;
+  servo_msg.data = servo_hw;
+
+  g_pub_motor.publish(motor_msg);
+  g_pub_servo.publish(servo_msg);
+
+  // ROS_INFO_THROTTLE(0.5,
+  //   "[lane_ctrl][loop] have_dx=%d steer_cmd=%.3f servo=%.3f motor=%.1f v=%.2f (steer_gain=%.3f)",
+  //   (int)have_dx, steer_cmd, servo_hw, motor_cmd, speed_cmd, g_steer_gain);
 }
