@@ -346,7 +346,7 @@ int main(int argc, char** argv)
   pnh.param<double>("range_max", g_range_max, 0.65);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
-  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.35);
+  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.25);
 
   ROS_INFO("[labacorn_node] subscribe scan='%s'",
            ros::names::resolve(g_scan_topic).c_str());

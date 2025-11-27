@@ -54,9 +54,9 @@ ros::Time g_labacorn_on_start_time;
 ros::Time g_labacorn_last_seen;
 // const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃 ** 로직에는 미완,// 먼저 라바콘 도중 끊킴이 없으면 해당 조건문을 추가하지 않아도됨
 // rotary 타이밍 제어
-const double k_rotary_hold_sec = 8.0;           // 코칼콘 8초 로직 유지
-bool g_rotary_hold_active = false;
-ros::Time g_rotary_hold_start;
+// const double k_rotary_hold_sec = 8.0;           // 코칼콘 8초 로직 유지
+// bool g_rotary_hold_active = false;
+// ros::Time g_rotary_hold_start;
 
 // labacorn 감지 안정화 (히스테리시스)
 const double k_labacorn_confirm_sec  = 0.5;     // 이 시간 연속 감지 시에만 미션 진입
@@ -186,17 +186,17 @@ int main(int argc, char** argv)
     }
 
     // rotary 진입 후 8초간 모드 유지
-    bool rotary_hold_now = false;
-    if (g_rotary_hold_active)
-    {
-      double hold_elapsed = (now - g_rotary_hold_start).toSec();
-      if (hold_elapsed < k_rotary_hold_sec) rotary_hold_now = true;
-      else
-      {
-        g_rotary_hold_active = false;
-        ROS_INFO("[main_node] ROTARY hold finished");
-      }
-    }
+    // bool rotary_hold_now = false;
+    // if (g_rotary_hold_active)
+    // {
+    //   double hold_elapsed = (now - g_rotary_hold_start).toSec();
+    //   if (hold_elapsed < k_rotary_hold_sec) rotary_hold_now = true;
+    //   else
+    //   {
+    //     g_rotary_hold_active = false;
+    //     ROS_INFO("[main_node] ROTARY hold finished");
+    //   }
+    // }
 
     // 디버깅: 상태 결정 전에 주요 플래그 로그 (1초 주기)
     // ** 
@@ -213,7 +213,7 @@ int main(int argc, char** argv)
     if (g_parking_bag_lock)                                 g_current_state = MISSION_PARKING;
     else if (g_crosswalk_detected)                          g_current_state = MISSION_CROSSWALK;
     else if (g_gate_detected)                               g_current_state = MISSION_GATE;
-    else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY;
+    // else if (rotary_hold_now || g_rotary_detected)          g_current_state = MISSION_ROTARY;
     else if (g_labacorn_confirmed)                          g_current_state = MISSION_LABACORN;
     // else if (g_parking_detected)                            g_current_state = MISSION_PARKING;
     else                                                    g_current_state = MISSION_LANE;
@@ -225,7 +225,7 @@ int main(int argc, char** argv)
       if (g_current_state == MISSION_LABACORN)        state_name = "LABACORN";
       else if (g_current_state == MISSION_GATE)       state_name = "GATE";
       else if (g_current_state == MISSION_CROSSWALK)  state_name = "CROSSWALK";
-      else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY";
+      // else if (g_current_state == MISSION_ROTARY)     state_name = "ROTARY";
       else if (g_current_state == MISSION_PARKING)    state_name = "PARKING";
 
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
@@ -233,12 +233,12 @@ int main(int argc, char** argv)
       {
         ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d)",state_name, (int)g_labacorn_detected);
       }
-      if (g_current_state == MISSION_ROTARY)
-      {
-        g_rotary_hold_active = true;
-        g_rotary_hold_start = now;
-        ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs", k_rotary_hold_sec);
-      }
+      // if (g_current_state == MISSION_ROTARY)
+      // {
+      //   g_rotary_hold_active = true;
+      //   g_rotary_hold_start = now;
+      //   ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs", k_rotary_hold_sec);
+      // }
 
       if (g_current_state == MISSION_LABACORN)
       {
