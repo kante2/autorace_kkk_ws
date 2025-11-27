@@ -5,7 +5,6 @@
 #include <std_msgs/Float64.h>
 #include <sstream>
 
-#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -25,10 +24,10 @@ std::string g_enable_topic;
 double g_eps = 0.3;
 int g_min_pts = 7;
 int g_max_pts = -1;
-double g_close_dist = 1.0;           // 튜닝: 감지 범위 (m), 클수록 넓게 감지
-double g_dynamic_speed_thresh = 0.2; // 튜닝: 동적 판정 속도 문턱 (m/s), 키우면 덜 민감
-double g_match_max_angle_deg = 15.0; // 튜닝: 프레임 매칭 허용 각도 (deg), 줄이면 오매칭 감소
-double g_match_max_dist = 1.0;       // 튜닝: 프레임 매칭 허용 거리 (m), 줄이면 오매칭 감소
+double g_close_dist = 1.0;  // 이 거리 이내 클러스터 존재 시 감지 true
+double g_dynamic_speed_thresh = 0.2;  // 상대 속도 문턱 (m/s)
+double g_match_max_angle_deg = 15.0;  // 이전-현재 클러스터 매칭 허용 각도
+double g_match_max_dist = 1.0;        // 이전-현재 클러스터 매칭 허용 거리 차이 (m)
 
 ros::Subscriber g_sub_scan;
 ros::Publisher g_pub_detected;
@@ -85,11 +84,12 @@ double motorCmdToSpeedMps(double motor_cmd)
   // 1000 명령당 0.26 m/s
   return motor_cmd * 0.00026;
 }
-
 std::vector<bool> classifyDynamics(const std::vector<ClusterCentroid> &curr,
                                    const ros::Time &stamp)
 {
   std::vector<bool> dynamic(curr.size(), false);
+
+  // 초기화/예외 처리 ---------------------------------
   if (curr.empty())
   {
     g_prev_centroids.clear();
@@ -112,55 +112,85 @@ std::vector<bool> classifyDynamics(const std::vector<ClusterCentroid> &curr,
     return dynamic;
   }
 
-  const double ego_speed = motorCmdToSpeedMps(g_motor_cmd);
+  // ego 상태 ----------------------------------------
+  const double ego_speed   = motorCmdToSpeedMps(g_motor_cmd);        // m/s
   const double heading_deg = servoToHeadingDeg(g_servo_pos);
+  const double heading_rad = heading_deg * M_PI / 180.0;
 
+  const double vx_ego = ego_speed * std::cos(heading_rad);
+  const double vy_ego = ego_speed * std::sin(heading_rad);
+
+  // 각 클러스터에 대해 --------------------------------
   for (std::size_t i = 0; i < curr.size(); ++i)
   {
-    const double ang_curr = normalizeAngleDeg(curr[i].angle + 360.0);
-    const double dist_curr = curr[i].distance;
+    const double ang_curr_deg = normalizeAngleDeg(curr[i].angle + 360.0);
+    const double ang_curr_rad = ang_curr_deg * M_PI / 180.0;
+    const double dist_curr    = curr[i].distance;
 
-    int best_idx = -1;
+    // --- 이전 프레임 클러스터 중 best match 찾기 (각도+거리) ---
+    int    best_idx   = -1;
     double best_score = std::numeric_limits<double>::max();
+
     for (std::size_t j = 0; j < g_prev_centroids.size(); ++j)
     {
-      const double ang_prev = normalizeAngleDeg(g_prev_centroids[j].angle + 360.0);
-      const double dist_prev = g_prev_centroids[j].distance;
-      const double d_ang = std::fabs(shortestAngleDiffDeg(ang_curr, ang_prev));
+      const double ang_prev_deg = normalizeAngleDeg(g_prev_centroids[j].angle + 360.0);
+      const double dist_prev    = g_prev_centroids[j].distance;
+
+      const double d_ang  = std::fabs(shortestAngleDiffDeg(ang_curr_deg, ang_prev_deg));
       const double d_dist = std::fabs(dist_curr - dist_prev);
+
       if (d_ang > g_match_max_angle_deg || d_dist > g_match_max_dist)
-      {
         continue;
-      }
+
       const double score = d_ang + d_dist;
       if (score < best_score)
       {
         best_score = score;
-        best_idx = static_cast<int>(j);
+        best_idx   = static_cast<int>(j);
       }
     }
 
     if (best_idx < 0)
-    {
-      continue;  // 매칭 실패 시 정적으로 둔다
-    }
+      continue;  // 매칭 실패 → 일단 정적으로 둠
 
-    const double dist_prev = g_prev_centroids[best_idx].distance;
-    const double observed_rate = (dist_prev - dist_curr) / dt;  // +: 접근 중
-    const double predicted_static_rate =
-        ego_speed * std::cos((ang_curr - heading_deg) * M_PI / 180.0);
-    const double relative_rate = observed_rate - predicted_static_rate;
+    // --- 이전 프레임 좌표 (polar -> cartesian) ---
+    const double ang_prev_deg = normalizeAngleDeg(g_prev_centroids[best_idx].angle + 360.0);
+    const double ang_prev_rad = ang_prev_deg * M_PI / 180.0;
+    const double dist_prev    = g_prev_centroids[best_idx].distance;
 
-    if (std::fabs(relative_rate) > g_dynamic_speed_thresh)
-    {
+    const double x_prev = dist_prev * std::cos(ang_prev_rad);
+    const double y_prev = dist_prev * std::sin(ang_prev_rad);
+    const double x_curr = dist_curr * std::cos(ang_curr_rad);
+    const double y_curr = dist_curr * std::sin(ang_curr_rad);
+
+    // --- 관측된 2D 속도 (라이다 좌표계) ---
+    const double vx_obs = (x_curr - x_prev) / dt;
+    const double vy_obs = (y_curr - y_prev) / dt;
+
+    // --- ego 속도 보정 → 상대 속도 ---
+    const double vx_rel = vx_obs - vx_ego;
+    const double vy_rel = vy_obs - vy_ego;
+
+    const double speed_rel = std::sqrt(vx_rel * vx_rel + vy_rel * vy_rel);  // m/s
+
+    if (speed_rel > g_dynamic_speed_thresh)
       dynamic[i] = true;
-    }
+
+    // 튜닝용 디버그 (원하면 잠깐 켜서 값 확인)
+    /*
+    ROS_INFO_THROTTLE(0.5,
+      "[dyn] i=%zu, dt=%.3f, v_obs=(%.2f, %.2f), v_ego=(%.2f, %.2f), "
+      "v_rel=(%.2f, %.2f), |v_rel|=%.2f, dyn=%d",
+      i, dt, vx_obs, vy_obs, vx_ego, vy_ego,
+      vx_rel, vy_rel, speed_rel, (int)dynamic[i]);
+    */
   }
 
   g_prev_centroids = curr;
   g_prev_stamp = stamp;
   return dynamic;
 }
+
 
 void motorCallback(const std_msgs::Float64::ConstPtr &msg)
 {
@@ -184,33 +214,19 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
   // 동적/정적 분류 (이전 프레임 대비 상대 속도)
   const std::vector<bool> dynamic_flags = classifyDynamics(det.centroids, scan_msg->header.stamp);
 
-  // 가까운 순으로 최대 3개까지 센트로이드 선택
-  std::vector<std::size_t> close_indices;
+  std::vector<ClusterCentroid> close_centroids;
+  std::vector<bool> close_dynamic_flags;
   if (det.detected)
   {
     for (std::size_t i = 0; i < det.centroids.size(); ++i)
     {
-      if (det.centroids[i].distance <= g_close_dist)
+      const auto &c = det.centroids[i];
+      if (c.distance <= g_close_dist)
       {
-        close_indices.push_back(i);
+        close_centroids.push_back(c);
+        close_dynamic_flags.push_back(dynamic_flags[i]);
       }
     }
-  }
-
-  std::sort(close_indices.begin(), close_indices.end(),
-            [&](std::size_t a, std::size_t b)
-            { return det.centroids[a].distance < det.centroids[b].distance; });
-  if (close_indices.size() > 3)
-  {
-    close_indices.resize(3);
-  }
-
-  std::vector<ClusterCentroid> close_centroids;
-  std::vector<bool> close_dynamic_flags;
-  for (std::size_t idx : close_indices)
-  {
-    close_centroids.push_back(det.centroids[idx]);
-    close_dynamic_flags.push_back(dynamic_flags[idx]);
   }
   bool has_close_dynamic = false;
   for (bool dyn : close_dynamic_flags)
@@ -289,14 +305,13 @@ int main(int argc, char **argv)
   pnh.param<std::string>("marker_topic", g_marker_topic, std::string("rotary/obstacle_markers"));
   pnh.param<std::string>("centroids_topic", g_centroids_topic, std::string("rotary/centroids"));
 
-  // --- 튜닝 파라미터 ---
-  pnh.param<double>("eps", g_eps, 0.3);                        // DBSCAN 클러스터 반경
-  pnh.param<int>("min_pts", g_min_pts, 8);                     // DBSCAN 최소 포인트 수
-  pnh.param<int>("max_pts", g_max_pts, 10);                    // DBSCAN 최대 포인트 수 (-1: 무제한)
-  pnh.param<double>("close_dist", g_close_dist, 1.0);          // 감지할 최대 거리 (m)
-  pnh.param<double>("dynamic_speed_thresh", g_dynamic_speed_thresh, 0.3); // 동적 판정 속도 문턱
-  pnh.param<double>("match_max_angle_deg", g_match_max_angle_deg, 10.0);   // 이전-현재 매칭 허용 각도
-  pnh.param<double>("match_max_dist", g_match_max_dist, 0.5);               // 이전-현재 매칭 허용 거리
+  pnh.param<double>("eps", g_eps, 0.3);
+  pnh.param<int>("min_pts", g_min_pts,4);
+  pnh.param<int>("max_pts", g_max_pts, 20); // -1: no limit
+  pnh.param<double>("close_dist", g_close_dist, 1.0);
+  pnh.param<double>("dynamic_speed_thresh", g_dynamic_speed_thresh, 0.3);
+  pnh.param<double>("match_max_angle_deg", g_match_max_angle_deg, 10.0);
+  pnh.param<double>("match_max_dist", g_match_max_dist, 0.8);
 
   ROS_INFO("[rotary_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());
   ROS_INFO("[rotary_node] subscribe motor='%s', servo='%s'", "/commands/motor/speed",
