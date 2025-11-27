@@ -241,17 +241,17 @@ int main(int argc, char** argv)
   pnh.param<double>("roi_left_bot_ratio",  g_roi_left_bot_ratio, -0.40);
   pnh.param<double>("roi_right_bot_ratio", g_roi_right_bot_ratio, 1.40);
 
-  ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
+  // ros::Subscriber img_sub = nh.subscribe("/usb_cam/image_rect_color", 2, imageCB);
 
   g_pub_center_color =
       nh.advertise<geometry_msgs::PointStamped>("/perception/center_color_px", 1);
 
-  if (g_show_window) {
-    cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_src, 960, 540);
-    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_bev, 960, 540);
-  }
+  // if (g_show_window) {
+  //   cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
+  //   cv::resizeWindow(g_win_src, 960, 540);
+  //   cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
+  //   cv::resizeWindow(g_win_bev, 960, 540);
+  // }
 
   ROS_INFO("lane_color_node running...");
   ros::spin();
