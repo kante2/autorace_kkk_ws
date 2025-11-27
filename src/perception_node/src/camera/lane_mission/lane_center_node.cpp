@@ -17,9 +17,9 @@
 ros::Publisher g_pub_center_point;
 ros::Publisher g_pub_curvature;   // 곡률 퍼블리셔
 
-bool g_show_window = true;
-std::string g_win_src = "lane_src_debug";
-std::string g_win_bev = "lane_bev_binary";
+// bool g_show_window = true;
+// std::string g_win_src = "lane_src_debug";
+// std::string g_win_bev = "lane_bev_binary";
 
 // 파라미터
 double g_lane_width_px = 340.0;
@@ -449,17 +449,17 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
     put("Curvature (px^-1): " + std::to_string(curvature), 72);
 
     // 7) 화면 출력
-    if (g_show_window) {
-      cv::Mat canvas;
-      cv::Mat src_resized, dbg_resized;
-      cv::resize(src_vis, src_resized, cv::Size(w, h));
-      cv::resize(debug_img, dbg_resized, cv::Size(w, h));
-      cv::hconcat(src_resized, dbg_resized, canvas);
+    // if (g_show_window) {
+    //   cv::Mat canvas;
+    //   cv::Mat src_resized, dbg_resized;
+    //   cv::resize(src_vis, src_resized, cv::Size(w, h));
+    //   cv::resize(debug_img, dbg_resized, cv::Size(w, h));
+    //   cv::hconcat(src_resized, dbg_resized, canvas);
 
-      cv::imshow(g_win_src, canvas);
-      cv::imshow(g_win_bev, bev_binary);
-      cv::waitKey(1);
-    }
+    //   cv::imshow(g_win_src, canvas);
+    //   cv::imshow(g_win_bev, bev_binary);
+    //   cv::waitKey(1);
+    // }
 
   } catch (const cv_bridge::Exception& e) {
     ROS_WARN("[lane_center_node] cv_bridge exception: %s", e.what());
@@ -480,7 +480,7 @@ int main(int argc, char** argv)
   ros::NodeHandle pnh("~");// private
 
   // 파라미터 로드
-  pnh.param<bool>("show_window", g_show_window, true);
+  // pnh.param<bool>("show_window", g_show_window, true);
   pnh.param<double>("lane_width_px", g_lane_width_px, 340.0);
 
   pnh.param<int>("num_windows",      g_num_windows,      12);

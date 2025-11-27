@@ -51,7 +51,9 @@ static double g_speed_drop_gain = 0.5;         // [MOD-static]
 
 // 모터 스케일
 static double g_motor_min_cmd = 0.0;           // [MOD-static]
-static double g_motor_max_cmd = 900.0;         // [MOD-static]
+static double g_motor_max_cmd = 1200.0;        // 기본 상한 [MOD-static]
+static double g_motor_max_cmd_red = 900.0;     // 색상(red) 감속용 [MOD-static]
+static double g_motor_max_cmd_blue = 2000.0;   // 색상(blue) 가속용 [MOD-static]
 static double g_motor_gain    = 300.0;         // [MOD-static]
 
 // 타임아웃
@@ -175,12 +177,12 @@ static void processDx(double dx)               // [MOD-static] 이 파일 안에
   double speed_cmd = clamp(g_base_speed_mps - g_speed_drop_gain * std::fabs(err_norm),
                            g_min_speed_mps, g_base_speed_mps);
 
-  // 색상 기반 속도 조정 // 1124 새로추가
-  if (g_lane_color_code == 1) { // 1124 새로추가
-    speed_cmd *= 0.5;
-  } else if (g_lane_color_code == 2) { // 1124 새로추가
-    speed_cmd = g_base_speed_mps;
-  }
+  // // 색상 기반 속도 조정 // 1124 새로추가
+  // if (g_lane_color_code == 1) { // 1124 새로추가
+  //   speed_cmd *= 0.5;
+  // } else if (g_lane_color_code == 2) { // 1124 새로추가
+  //   speed_cmd = g_base_speed_mps;
+  // }
 
   g_latest_steer_cmd = steer_cmd;   // -1 ~ +1
   g_latest_speed_cmd = speed_cmd;   // m/s 개념
@@ -315,7 +317,9 @@ void mission_lane_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
   // 모터 스케일
   pnh.param<double>("motor_min_cmd", g_motor_min_cmd, 0.0);
-  pnh.param<double>("motor_max_cmd", g_motor_max_cmd, 1200.0);
+  pnh.param<double>("motor_max_cmd",      g_motor_max_cmd,      1200.0);
+  pnh.param<double>("motor_max_cmd_red",  g_motor_max_cmd_red,  900.0);   // red 감속 기본값
+  pnh.param<double>("motor_max_cmd_blue", g_motor_max_cmd_blue, 2000.0);  // blue 가속 기본값
   pnh.param<double>("motor_gain",    g_motor_gain,    300.0);
 
   // PID 파라미터
@@ -380,7 +384,15 @@ void mission_lane_step()
 
   // ---- 2) 속도 변환: m/s -> 모터 명령 ----
   double motor_cmd = g_motor_gain * speed_cmd;
-  motor_cmd = clamp(motor_cmd, g_motor_min_cmd, g_motor_max_cmd);
+
+  // 색상별 강제 명령: 무색은 기존 스케일/클램프, red/blue는 고정 값
+  if (g_lane_color_code == 1) {         // red
+    motor_cmd = 900.0;
+  } else if (g_lane_color_code == 2) {  // blue
+    motor_cmd = 2000.0;
+  } else {
+    motor_cmd = clamp(motor_cmd, g_motor_min_cmd, g_motor_max_cmd);
+  }
 
   // ---- 3) Publish ----
   std_msgs::Float64 motor_msg;

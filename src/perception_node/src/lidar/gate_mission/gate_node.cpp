@@ -52,8 +52,8 @@ static laser_geometry::LaserProjection g_projector;
 static double g_eps            = 0.2;    // 클러스터 간 거리 [m]
 static int    g_min_samples    = 10;     // DBSCAN 최소 점 수
 static double g_gate_stop_dist = 2.0;    // 로봇-게이트 중심 거리 임계값 [m]
-static double g_front_min_deg  = 120.0;  // ROI 각도 시작(deg) - 후방0/전방180 CCW 기준
-static double g_front_max_deg  = 240.0;  // ROI 각도 끝(deg)
+static double g_front_min_deg  = 160.0;  // ROI 각도 시작(deg) - 후방0/전방180 CCW 기준
+static double g_front_max_deg  = 200.0;  // ROI 각도 끝(deg)
 static std::string g_enable_topic;
 
 // 게이트 상태 히스테리시스
@@ -276,7 +276,7 @@ static GateState compute_GateState(const std::vector<Point2D>& gate_cluster)
   var_x /= gate_cluster.size();
   var_y /= gate_cluster.size();
 
-  double ratio = 2.0;  // var_y >> var_x 이면 좌우로 긴 막대기
+  double ratio = 25;  // var_y >> var_x 이면 좌우로 긴 막대기
   if (var_y > ratio * var_x) {
     ROS_INFO_THROTTLE(0.5, "[gate_state] Gate DOWN (horizontal cluster detected)");
     return GATE_DOWN;

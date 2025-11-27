@@ -1,5 +1,5 @@
 <launch>
-  <node pkg="perception_node" type="gate_node" name="gate_node" output="screen"/>
+<!--  <node pkg="perception_node" type="gate_node" name="gate_node" output="screen"/> -->
   <node pkg="perception_node" type="labacorn_node" name="labacorn_node" output="screen"/>
   <node pkg="perception_node" type="parking_node" name="parking_node" output="screen"/>
   <node pkg="perception_node" type="rotary_node" name="rotary_node" output="screen"/>

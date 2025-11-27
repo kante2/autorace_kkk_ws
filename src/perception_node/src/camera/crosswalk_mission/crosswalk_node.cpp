@@ -255,10 +255,10 @@ int main(int argc, char** argv)
   g_pub_white_ratio =
       nh.advertise<std_msgs::Float64>(white_ratio_topic, 1);
 
-  if (g_show_window) {
-    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_bev, 960, 540);
-  }
+//  if (g_show_window) {
+//    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
+//    cv::resizeWindow(g_win_bev, 960, 540);
+//  }
 
   ROS_INFO("crosswalk_node running...");
   ROS_INFO("  use_yellow_lanes = %s", g_use_yellow ? "true" : "false");

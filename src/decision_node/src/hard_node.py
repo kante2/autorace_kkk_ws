@@ -57,7 +57,7 @@ class HardcodeMissionRunner:
 
         각 step: dict(name, servo, motor, duration)
         """
-        servo_const = 0.567
+        servo_const = 0.57
 
         steps = [
             # 1. 직진 (145cm 가야 함) → 약 5.11초
@@ -87,7 +87,7 @@ class HardcodeMissionRunner:
             # 4. 직진 (150cm 가야 함) → 약 4.57초
             dict(
                 name="M1_STEP4_STRAIGHT_4.57S_V1100",
-                servo=servo_const,
+                servo=servo_const-0.05,
                 motor=1100.0,
                 duration=4.57,
             ),
@@ -103,9 +103,9 @@ class HardcodeMissionRunner:
             # 6. 직진 (155cm 가야 함) → 약 4.72초
             dict(
                 name="M1_STEP6_STRAIGHT_4.72S_V1100",
-                servo=servo_const,
+                servo=servo_const+0.01,
                 motor=1100.0,
-                duration=4.72,
+                duration=5.0,
             ),
         ]
         return steps
