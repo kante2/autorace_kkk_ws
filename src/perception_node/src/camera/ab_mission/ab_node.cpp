@@ -468,8 +468,8 @@ void imageCB(const sensor_msgs::ImageConstPtr& msg)
       cv::resize(debug_img, dbg_resized, cv::Size(w, h));
       cv::hconcat(src_resized, dbg_resized, canvas);
 
-      cv::imshow(g_win_src, canvas);
-      cv::imshow(g_win_bev, bev_binary);
+      // cv::imshow(g_win_src, canvas);
+      // cv::imshow(g_win_bev, bev_binary);
       cv::waitKey(1);
     }
 

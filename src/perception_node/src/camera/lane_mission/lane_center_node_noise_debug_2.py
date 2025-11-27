@@ -147,10 +147,10 @@ def main():
     dbg_resized = cv2.resize(debug_img, (w, h))
     canvas = cv2.hconcat([src_resized, dbg_resized])
 
-    cv2.namedWindow("src+windows", cv2.WINDOW_NORMAL)
-    cv2.namedWindow("bev_binary", cv2.WINDOW_NORMAL)
-    cv2.imshow("src+windows", canvas)
-    cv2.imshow("bev_binary", bev_binary)
+    # cv2.namedWindow("src+windows", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("bev_binary", cv2.WINDOW_NORMAL)
+    # cv2.imshow("src+windows", canvas)
+    # cv2.imshow("bev_binary", bev_binary)
     cv2.waitKey(0)
 
 
