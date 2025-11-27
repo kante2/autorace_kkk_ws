@@ -12,17 +12,6 @@ void mission_lane_step();
 void mission_labacorn_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_labacorn_step();
 
-// mission_ab
-void mission_ab_left_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
-void mission_ab_left_step();
-bool mission_ab_left_done();
-void mission_ab_left_reset();
-
-void mission_ab_right_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
-void mission_ab_right_step();
-bool mission_ab_right_done();
-void mission_ab_right_reset();
-
 // mission_gate.cpp
 void mission_gate_init(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 void mission_gate_step();
@@ -47,8 +36,7 @@ enum MissionState
   MISSION_GATE,
   MISSION_CROSSWALK,
   MISSION_ROTARY,
-  MISSION_PARKING,
-  MISSION_AB  // AB 표지판 좌/우 삽입 동작
+  MISSION_PARKING
 };
 
 MissionState g_current_state = MISSION_LANE;
@@ -65,11 +53,6 @@ bool g_labacorn_session_active = false;
 ros::Time g_labacorn_on_start_time;
 ros::Time g_labacorn_last_seen;
 // const double k_labacorn_grace_sec = 5.0;        // 라바콘 끊김 완충/타임아웃 ** 로직에는 미완,// 먼저 라바콘 도중 끊킴이 없으면 해당 조건문을 추가하지 않아도됨
-bool g_ab_left_detected    = false;
-bool g_ab_right_detected   = false;
-int  g_ab_lock_dir      = -1;                      // -1 none, 0 left, 1 right --> 이거는 ab 표지판 감지한 방향을 고정(래치)해두는 변수이다.
-bool g_ab_action_running   = false;
-
 // rotary 타이밍 제어
 const double k_rotary_hold_sec = 8.0;           // 코칼콘 8초 로직 유지
 bool g_rotary_hold_active = false;
@@ -120,16 +103,6 @@ void CB_ParkingBagLock(const std_msgs::Bool::ConstPtr& msg)
 }
 
 // -------------------- 콜백: AB 좌/우 감지 --------------------
-void CB_AB_Left(const std_msgs::Bool::ConstPtr& msg)
-{
-  if (msg->data) g_ab_left_detected = true;
-}
-
-void CB_AB_Right(const std_msgs::Bool::ConstPtr& msg)
-{
-  if (msg->data) g_ab_right_detected = true;
-}
-
 // -------------------- main --------------------
 int main(int argc, char** argv)
 {
@@ -146,8 +119,6 @@ int main(int argc, char** argv)
   std::string topic_rotary_detected;
   std::string topic_parking_detected;
   std::string topic_parking_bag_lock;
-  std::string topic_ab_left;
-  std::string topic_ab_right;
 
   pnh.param<std::string>("labacorn_detected_topic", topic_labacorn_detected, std::string("/labacorn_detected"));
   pnh.param<std::string>("gate_detected_topic", topic_gate_detected, std::string("/gate_detected"));
@@ -155,8 +126,6 @@ int main(int argc, char** argv)
   pnh.param<std::string>("rotary_detected_topic",topic_rotary_detected,std::string("/rotary_detected"));
   pnh.param<std::string>("parking_detected_topic",topic_parking_detected,std::string("/parking_detected"));
   pnh.param<std::string>("parking_bag_lock_topic", topic_parking_bag_lock,std::string("/parking_bag_lock"));
-  pnh.param<std::string>("ab_left_topic", topic_ab_left,std::string("/ab_sign/left"));
-  pnh.param<std::string>("ab_right_topic",topic_ab_right,std::string("/ab_sign/right"));
 
   // ===== 감지 토픽 구독 =====
   ros::Subscriber sub_labacorn =  nh.subscribe(topic_labacorn_detected, 1, CB_LabacornDetected);
@@ -165,8 +134,6 @@ int main(int argc, char** argv)
   ros::Subscriber sub_rotary =    nh.subscribe(topic_rotary_detected, 1, CB_RotaryDetected);
   ros::Subscriber sub_parking =   nh.subscribe(topic_parking_detected, 1, CB_ParkingDetected);
   ros::Subscriber sub_parking_lock = nh.subscribe(topic_parking_bag_lock, 1, CB_ParkingBagLock);
-  ros::Subscriber sub_ab_left =     nh.subscribe(topic_ab_left, 1, CB_AB_Left);
-  ros::Subscriber sub_ab_right =    nh.subscribe(topic_ab_right, 1, CB_AB_Right);
 
   // ===== 각 미션 초기화 =====
   mission_lane_init(nh, pnh);
@@ -175,8 +142,6 @@ int main(int argc, char** argv)
   mission_crosswalk_init(nh, pnh);
   mission_rotary_init(nh, pnh);
   mission_parking_init(nh, pnh);
-  mission_ab_left_init(nh, pnh);
-  mission_ab_right_init(nh, pnh);
 
   ROS_INFO("[main_node] all mission init done");
 
@@ -236,9 +201,8 @@ int main(int argc, char** argv)
     // 디버깅: 상태 결정 전에 주요 플래그 로그 (1초 주기)
     // ** 
     ROS_INFO_THROTTLE(1.0,
-                      "[main_node] flags lane->AB debug | ab_run=%d ab_lock=%d L=%d R=%d "
+                      "[main_node] flags lane debug | "
                       "labacorn=%d gate=%d crosswalk=%d rotary=%d parking=%d bag_lock=%d",
-                      (int)g_ab_action_running, g_ab_lock_dir, (int)g_ab_left_detected, (int)g_ab_right_detected,
                       (int)g_labacorn_detected, (int)g_gate_detected, (int)g_crosswalk_detected,
                       (int)g_rotary_detected, (int)g_parking_detected, (int)g_parking_bag_lock);
 
@@ -267,7 +231,7 @@ int main(int argc, char** argv)
       ROS_INFO("[main_node] Mission changed -> %s", state_name);
       if (prev_state == MISSION_LABACORN && g_current_state != MISSION_LABACORN) // 라바콘 빠져나가는 부분 디버깅용 ** 
       {
-        ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d, ab_lock_dir=%d)",state_name, (int)g_labacorn_detected, g_ab_lock_dir);
+        ROS_WARN("[main_node] LABACORN exit -> %s (labacorn_detected=%d)",state_name, (int)g_labacorn_detected);
       }
       if (g_current_state == MISSION_ROTARY)
       {
@@ -276,9 +240,6 @@ int main(int argc, char** argv)
         ROS_INFO("[main_node] ROTARY entered -> hold for %.1fs", k_rotary_hold_sec);
       }
 
-      // 1. 라바콘 1회 -> AB ENABLE TOPIC --> /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py 구독
-      // 2. /root/autorace_kkk_ws/src/perception_node/src/ab_sign/traffic_sign.py가 left, right 를 뽑는다.
-      // 3. main이 다시 구독 -->   /root/autorace_kkk_ws/src/decision_node/src/mission_ab/mission_ab_left.cpp, 또는 right를 8초간 실행하도록 한다.
       if (g_current_state == MISSION_LABACORN)
       {
         g_labacorn_count++;
