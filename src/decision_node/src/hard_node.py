@@ -6,6 +6,14 @@ main_hardcode_missions.py
     라바콘 솔로 CPP 실행(<MISSION2>),
     AB 패턴(<MISSION3>)
     을 하나의 노드에서 순차적으로 실행하는 예시.
+
+
+
+실행방법
+roscore &
+rosrun decision_node hard_node.py
+
+
 """
 
 import rospy
@@ -111,6 +119,21 @@ class HardcodeMissionRunner:
         3: 왼쪽 조향 1초
         """
         steps = [
+            # 0. 왼쪽 회전 
+            # dict(
+            #     name="M2_STEP1_STRAIGHT_3S_V1000",
+            #     servo=0.367,
+            #     motor=1000.0,
+            #     duration=1.0,
+            # ),
+
+            # dict(
+            #     name="M2_STEP1_STRAIGHT_3S_V1000",
+            #     servo=0.567,
+            #     motor=1000.0,
+            #     duration=0.5,
+            # ),
+
             # 1. 직진 3초
             dict(
                 name="M2_STEP1_STRAIGHT_3S_V1000",
