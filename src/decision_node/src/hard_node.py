@@ -57,7 +57,7 @@ class HardcodeMissionRunner:
 
         각 step: dict(name, servo, motor, duration)
         """
-        servo_const = 0.567
+        servo_const = 0.567 # -.567 - 0.570
 
         steps = [
             # 1. 직진 (145cm 가야 함) → 약 5.11초
@@ -65,7 +65,7 @@ class HardcodeMissionRunner:
                 name="M1_STEP1_STRAIGHT_5.11S_V1000",
                 servo=servo_const,
                 motor=1000.0,
-                duration=5.11,
+                duration=5.11, # 5.11 -> 5.3
             ),
 
             # 2. 빨간색 구간 - 느리게 (200cm 가야 함) → 약 8.34초
@@ -87,7 +87,7 @@ class HardcodeMissionRunner:
             # 4. 직진 (150cm 가야 함) → 약 4.57초
             dict(
                 name="M1_STEP4_STRAIGHT_4.57S_V1100",
-                servo=servo_const,
+                servo=servo_const-0.01,
                 motor=1100.0,
                 duration=4.57,
             ),
@@ -103,9 +103,9 @@ class HardcodeMissionRunner:
             # 6. 직진 (155cm 가야 함) → 약 4.72초
             dict(
                 name="M1_STEP6_STRAIGHT_4.72S_V1100",
-                servo=servo_const,
+                servo=servo_const + 0.01,
                 motor=1100.0,
-                duration=4.72,
+                duration=5.0, # 5.0
             ),
         ]
         return steps
@@ -274,7 +274,9 @@ class HardcodeMissionRunner:
         rospy.loginfo("========== START MISSION2_LABACORN_SOLO ==========")
         # 실행 전 잠깐 정지
         self.stop_car(servo_center=0.567, duration=2.0)
+        
         self.run_labacorn_solo(duration=self.labacorn_duration)
+
         # 실행 후 정지
         self.stop_car(servo_center=0.567, duration=3.0)
         rospy.loginfo("========== END   MISSION2_LABACORN_SOLO ==========")
