@@ -50,7 +50,8 @@ int main(int argc, char** argv)
   ros::NodeHandle pnh("~");
 
   pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/mission/bag_enable"));
-  pnh.param<std::string>("bag_path", g_bag_path, std::string("/root/autorace_kkk_ws/src/bagfiles/parking_command.bag"));
+  pnh.param<std::string>("bag_path", g_bag_path,
+                         std::string("/root/autorace_kkk_ws/src/decision_node/src/mission_bagfiles/go_ab_left.bag"));
   pnh.param<std::string>("bag_args", g_bag_args, std::string(""));
   pnh.param<double>("min_interval", g_min_interval, 0.5);
 
