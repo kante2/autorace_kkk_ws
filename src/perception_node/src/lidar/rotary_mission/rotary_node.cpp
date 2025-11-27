@@ -161,7 +161,7 @@ std::vector<bool> classifyDynamics(const std::vector<ClusterCentroid> &curr,
 
     const double x_prev = dist_prev * std::cos(ang_prev_rad);
     const double y_prev = dist_prev * std::sin(ang_prev_rad);
-    const double x_curr = dist_curr * std::cos(ang_curr_rad);
+    const double x_curr = dist_curr * std::cos(ang_curr_rad); 
     const double y_curr = dist_curr * std::sin(ang_curr_rad);
 
     // --- 관측된 2D 속도 (라이다 좌표계) ---

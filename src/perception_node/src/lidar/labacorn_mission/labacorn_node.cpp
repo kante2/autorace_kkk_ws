@@ -323,7 +323,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
                     static_cast<int>(detected));
 }
 
-// -------------------- main --------------------
+// -------------------- main --------------------//
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "labacorn_node");
