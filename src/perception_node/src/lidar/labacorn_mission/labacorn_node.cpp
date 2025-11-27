@@ -22,16 +22,15 @@ std::string g_cloud_topic;
 std::string g_detected_topic;
 std::string g_target_topic;
 std::string g_target_frame;
-std::string g_enable_topic;
 
 double g_eps = 0.2;
-int    g_min_samples = 4;
+int    g_min_samples = 3;
 double g_range_min = 0.13;
 double g_range_max = 0.9;
 double g_front_min_deg = 60.0;
 double g_front_max_deg = 300.0;
 double g_lane_offset_y = 0.12;
-bool   g_enabled = true;
+double g_lane_gain = 1.8;
 
 // -------------------- 전역 Pub --------------------
 ros::Publisher g_pub_marker_arr;
@@ -125,11 +124,6 @@ std::vector<Point2D> computeCentroids(const std::vector<Point2D>& points,
   return out;
 }
 
-void enableCB(const std_msgs::Bool::ConstPtr& msg)
-{
-  g_enabled = msg->data;
-}
-
 // -------------------- 타깃 계산 --------------------
 bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
                    double& target_x, double& target_y)
@@ -169,14 +163,31 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
   }
   else if (left_cnt > 0)
   {
-    target_x = left_x_sum / left_cnt;
-    target_y = (left_y_sum / left_cnt) - lane_offset_y;
+    double rx = right_x_sum / right_cnt;
+    double ry = right_y_sum / right_cnt;
+
+    // 오른쪽 클러스터 기준으로 중앙선 계산
+    // 장애물 폭 0.44m 기준, 차량이 너무 왼쪽으로 튀지 않게
+    target_x = rx;
+    target_y = ry - lane_offset_y * g_lane_gain;  // 중앙선 = 오른쪽 y - 반 폭
+    //target_x = left_x_sum / left_cnt;
+    //target_y = (left_y_sum / left_cnt) - lane_offset_y;
+    // target_y = (left_y_sum / left_cnt) - lane_offset_y;
+
     return true;
   }
   else if (right_cnt > 0)
   {
-    target_x = right_x_sum / right_cnt;
-    target_y = (right_y_sum / right_cnt) + lane_offset_y;
+
+    double rx = right_x_sum / right_cnt;
+    double ry = right_y_sum / right_cnt;  
+
+    target_x = rx;
+    target_y = ry + lane_offset_y * g_lane_gain;
+
+    //target_x = right_x_sum / right_cnt;
+    //target_y = (right_y_sum / right_cnt)+ lane_offset_y;
+    //target_y = (right_y_sum / right_cnt) + lane_offset_y;
     return true;
   }
   return false;
@@ -185,8 +196,6 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
 // -------------------- 스캔 콜백 --------------------
 void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
-  if (!g_enabled) return;
-
   // 디버그용 포인트클라우드
   if (g_pub_cloud.getNumSubscribers() > 0)
   {
@@ -203,23 +212,25 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   std::vector<int> labels = dbscan(points);
   std::vector<Point2D> centroids = computeCentroids(points, labels);
 
-  // 클러스터 수 제한: 섹터(120~160도, 200~240도) 밖은 모두 버림, 섹터별 첫 번째만 사용
+  // 클러스터 수 제한: 총 2개 이하, 섹터별 1개씩 (120~170도, 190~240도)
+  // 크기와 무관하게 각 섹터 첫 번째 클러스터만 사용
   {
     std::vector<Point2D> sector1, sector2;
     for (const auto& c : centroids) {
       double ang = std::atan2(c.y, c.x) * 180.0 / M_PI; // laser 프레임 기준
       if (ang < 0.0) ang += 360.0;
-      if (ang >= 120.0 && ang <= 160.0) {
+      if (ang >= 120.0 && ang <= 165.0) {
         if (sector1.empty()) sector1.push_back(c);
-      } else if (ang >= 200.0 && ang <= 240.0) {
+      } else if (ang >= 215.0 && ang <= 240.0) {
         if (sector2.empty()) sector2.push_back(c);
       }
     }
+
     std::vector<Point2D> limited;
     if (!sector1.empty()) limited.push_back(sector1.front());
     if (!sector2.empty()) limited.push_back(sector2.front());
-    // 각도 조건 밖은 생성하지 않도록 필터링 결과만 사용
-    centroids = limited;
+    // 섹터에 아무 것도 없으면 기존 centroids를 유지해 감지 자체가 사라지지 않도록 함
+    if (!limited.empty()) centroids = limited;
   }
   bool detected = !centroids.empty();
 
@@ -328,15 +339,14 @@ int main(int argc, char** argv)
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/labacorn_detected"));
   pnh.param<std::string>("target_topic", g_target_topic, std::string("/labacorn/target"));
   pnh.param<std::string>("target_frame", g_target_frame, std::string("laser"));
-  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/labacorn/enable"));
 
   pnh.param<double>("eps", g_eps, 0.2);
   pnh.param<int>("min_samples", g_min_samples, 3);
   pnh.param<double>("range_min", g_range_min, 0.3);
-  pnh.param<double>("range_max", g_range_max, 0.7);
+  pnh.param<double>("range_max", g_range_max, 0.65);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
-  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.4);
+  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.35);
 
   ROS_INFO("[labacorn_node] subscribe scan='%s'",
            ros::names::resolve(g_scan_topic).c_str());
@@ -355,7 +365,6 @@ int main(int argc, char** argv)
   g_tf_buffer = std::make_shared<tf2_ros::Buffer>();
   g_tf_listener = std::make_shared<tf2_ros::TransformListener>(*g_tf_buffer);
 
-  ros::Subscriber enable_sub = nh.subscribe(g_enable_topic, 1, enableCB);
   ros::Subscriber scan_sub = nh.subscribe(g_scan_topic, 1, scanCallback);
   ros::spin();
   return 0;
