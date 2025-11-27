@@ -2,11 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 main_hardcode_missions.py
-  - 하드코딩된 직진 테스트(<미션1>)와 AB 패턴(<미션2>)을
-    하나의 노드에서 순차적으로 실행하는 예시.
+  - 하드코딩된 직진 테스트(<미션1>),
+    AB 패턴(<미션2>),
+    라바콘 솔로 CPP 실행(<미션3>)
+    을 하나의 노드에서 순차적으로 실행하는 예시.
 """
 
 import rospy
+import subprocess
+import signal
+
 from std_msgs.msg import Float64
 
 
@@ -30,10 +35,22 @@ class HardcodeMissionRunner:
         self.mission1 = self.build_mission1()
         self.mission2 = self.build_mission2()
 
-        # 실행 순서
+        # 미션3: 라바콘 솔로 cpp 실행 시간 (초)
+        # 필요하면 launch에서 ~labacorn_duration 변경 가능
+        self.labacorn_duration = rospy.get_param("~labacorn_duration", 10.0)
+
+        # 미션3: 실행 커맨드 (기본: rosrun decision_node labacorn_solo)
+        # 만약 실행 파일 이름이 rotary_solo 이면:
+        #   <param name="labacorn_cmd" value="rosrun decision_node rotary_solo"/>
+        # 이런 식으로 launch에서 덮어쓰기 가능
+        default_cmd = ["rosrun", "decision_node", "labacorn_solo"]
+        self.labacorn_cmd = rospy.get_param("~labacorn_cmd", default_cmd)
+
+        # 실행 순서 (1, 2는 step 기반, 3은 외부 노드 실행)
         self.mission_sequence = [
             ("MISSION1_STRAIGHT_TEST", self.mission1),
             ("MISSION2_AB_RIGHT_MODE", self.mission2),
+            # 미션3은 run()에서 별도 처리
         ]
 
     # ---------------- 미션 1: 직진 + 색 구간 + 정지 + 직진 ----------------
@@ -132,7 +149,7 @@ class HardcodeMissionRunner:
         ]
         return steps
 
-    # ---------------- 공통 실행 함수 ----------------
+    # ---------------- 공통 실행 함수 (STEP 기반) ----------------
     def run_step(self, step):
         name = step["name"]
         servo = step["servo"]
@@ -175,9 +192,61 @@ class HardcodeMissionRunner:
             self.pub_motor.publish(msg_motor)
             self.rate.sleep()
 
+    # ---------------- 미션3: 라바콘 솔로 CPP 실행 ----------------
+    def run_labacorn_solo(self, duration=None):
+        """
+        <미션3>:
+          - 외부 C++ 노드(labacorn_solo)를 rosrun으로 실행
+          - duration 초 동안 기다렸다가 SIGINT(Ctrl+C)로 종료 시도
+        """
+        if duration is None:
+            duration = self.labacorn_duration
+
+        # 파라미터에서 labacorn_cmd를 리스트로 받았다고 가정
+        cmd = self.labacorn_cmd
+        if isinstance(cmd, str):
+            # 혹시 문자열로 들어왔으면 공백 기준 split
+            cmd = cmd.split()
+
+        rospy.loginfo("[MISSION3_LABACORN_SOLO] start: %s (duration=%.2fs)",
+                      " ".join(cmd), duration)
+
+        try:
+            proc = subprocess.Popen(cmd)
+        except Exception as e:
+            rospy.logerr("[MISSION3_LABACORN_SOLO] failed to start: %s", e)
+            return
+
+        # duration 동안 대기 (로봇은 labacorn_solo 노드가 제어)
+        start = rospy.Time.now()
+        wait_rate = rospy.Rate(10.0)
+        while not rospy.is_shutdown():
+            elapsed = (rospy.Time.now() - start).to_sec()
+            if elapsed >= duration:
+                break
+            # 여기서 굳이 publish는 안 하고, 단순히 시간만 보냄
+            wait_rate.sleep()
+
+        # SIGINT 보내서 종료 시도
+        rospy.loginfo("[MISSION3_LABACORN_SOLO] send SIGINT to external node")
+        try:
+            proc.send_signal(signal.SIGINT)
+        except Exception as e:
+            rospy.logwarn("[MISSION3_LABACORN_SOLO] failed to send SIGINT: %s", e)
+
+        # 조금 더 기다렸다가 (혹시 남아있으면) 종료 확인
+        try:
+            proc.wait(timeout=3.0)
+        except Exception:
+            rospy.logwarn("[MISSION3_LABACORN_SOLO] process did not exit in time")
+
+        rospy.loginfo("[MISSION3_LABACORN_SOLO] done")
+
+    # ---------------- 전체 실행 루프 ----------------
     def run(self):
         rospy.sleep(1.0)  # publisher 준비시간
 
+        # ---------- 미션1, 미션2: step 기반 ----------
         for mission_name, steps in self.mission_sequence:
             if rospy.is_shutdown():
                 break
@@ -191,6 +260,18 @@ class HardcodeMissionRunner:
 
             # 각 미션 사이에 잠깐 정지
             self.stop_car(servo_center=0.567, duration=2.0)
+
+        # ---------- 미션3: 라바콘 솔로 CPP 실행 ----------
+        if not rospy.is_shutdown():
+            rospy.loginfo("========== START MISSION3_LABACORN_SOLO ==========")
+            # 실행 전 잠깐 정지
+            self.stop_car(servo_center=0.567, duration=2.0)
+
+            self.run_labacorn_solo(duration=self.labacorn_duration)
+
+            # 실행 후 정지
+            self.stop_car(servo_center=0.567, duration=3.0)
+            rospy.loginfo("========== END   MISSION3_LABACORN_SOLO ==========")
 
         # 전체 끝나면 완전 정지
         rospy.loginfo("[ALL MISSIONS DONE] final stop.")

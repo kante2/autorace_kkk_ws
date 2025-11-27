@@ -203,8 +203,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   std::vector<int> labels = dbscan(points);
   std::vector<Point2D> centroids = computeCentroids(points, labels);
 
-  // 클러스터 수 제한: 총 2개 이하, 섹터별 1개씩 (120~170도, 190~240도)
-  // 크기와 무관하게 각 섹터 첫 번째 클러스터만 사용
+  // 클러스터 수 제한: 섹터(120~160도, 200~240도) 밖은 모두 버림, 섹터별 첫 번째만 사용
   {
     std::vector<Point2D> sector1, sector2;
     for (const auto& c : centroids) {
@@ -219,8 +218,8 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     std::vector<Point2D> limited;
     if (!sector1.empty()) limited.push_back(sector1.front());
     if (!sector2.empty()) limited.push_back(sector2.front());
-    // 섹터에 아무 것도 없으면 기존 centroids를 유지해 감지 자체가 사라지지 않도록 함
-    if (!limited.empty()) centroids = limited;
+    // 각도 조건 밖은 생성하지 않도록 필터링 결과만 사용
+    centroids = limited;
   }
   bool detected = !centroids.empty();
 

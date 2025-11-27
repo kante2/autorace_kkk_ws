@@ -31,6 +31,8 @@ double g_stop_motor_cmd = 0.0;
 
 bool g_goal_in_range = false;
 ros::Time g_goal_in_range_time;
+bool g_goal_triggered = false;       // goal(또는 marker) 수신 트리거
+ros::Time g_goal_trigger_time;
 bool g_bag_started = false;
 double g_bag_delay_sec = 2.0;
 double g_goal_x_min = -0.3;
@@ -56,9 +58,14 @@ void goalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
   g_latest_goal = *msg;
   const double x = msg->pose.position.x;
+  const ros::Time now = ros::Time::now();
+  // goal이 들어오면 즉시 트리거 (범위 체크와 별도로)
+  g_goal_triggered = true;
+  g_goal_trigger_time = now;
+  // 기존 범위 체크도 유지
   if (x >= g_goal_x_min && x <= g_goal_x_max) {
     g_goal_in_range = true;
-    g_goal_in_range_time = ros::Time::now();
+    g_goal_in_range_time = now;
     g_bag_started = false;  // reset trigger for new in-range event
   }
   if (g_pub_goal)
@@ -80,7 +87,7 @@ void mission_parking_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   pnh.param<std::string>("motor_topic", g_motor_topic,
                          std::string("/commands/motor/speed"));
   pnh.param<std::string>("bag_path", g_bag_path,
-                         std::string("/root/autorace_kkk_ws/src/bagfiles/rotary.bag"));
+                         std::string("/root/autorace_kkk_ws/src/bagfiles/parking_command.bag"));
   pnh.param<std::string>("bag_lock_topic", g_bag_lock_topic,
                          std::string("/parking_bag_lock"));
   pnh.param<double>("parking_stop_motor_cmd", g_stop_motor_cmd, 0.0);
@@ -112,6 +119,7 @@ void mission_parking_init(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   g_last_detect_time = ros::Time(0);
   g_latest_goal.reset();
   g_goal_in_range = false;
+  g_goal_triggered = false;
   g_bag_started = false;
   g_bag_lock = false;
 }
@@ -129,7 +137,7 @@ void mission_parking_step()
   detected_msg.data = g_bag_lock ? true : g_latest_detected;
   g_pub_detected.publish(detected_msg);
 
-  if (g_bag_lock || g_latest_detected)
+  if (g_bag_lock || g_latest_detected || g_goal_triggered)
   {
     std_msgs::Float64 motor_msg;
     motor_msg.data = g_stop_motor_cmd;
@@ -145,9 +153,10 @@ void mission_parking_step()
   }
 
   // goal x 범위 내면 정지 후 딜레이 뒤 rosbag 재생 (한 번만 트리거)
-  if (g_goal_in_range && !g_bag_started)
+  // goal(또는 marker) 수신 후 딜레이 경과 시 bag 재생 (한 번만)
+  if (g_goal_triggered && !g_bag_started)
   {
-    const double dt = (ros::Time::now() - g_goal_in_range_time).toSec();
+    const double dt = (ros::Time::now() - g_goal_trigger_time).toSec();
     if (dt >= g_bag_delay_sec)
     {
       const std::string cmd = "rosbag play " + g_bag_path + " &";
@@ -159,11 +168,13 @@ void mission_parking_step()
   }
 
   ROS_INFO_THROTTLE(1.0,
-                    "[parking_mission] detected=%d (cached %0.1f s ago)%s goal_in_range=%d bag_started=%d bag_lock=%d",
+                    "[parking_mission] detected=%d (cached %0.1f s ago)%s goal_in_range=%d goal_triggered=%d dt_trigger=%.1f bag_started=%d bag_lock=%d",
                     static_cast<int>(g_bag_lock ? true : g_latest_detected),
                     (ros::Time::now() - g_last_detect_time).toSec(),
                     g_latest_goal ? " goal republished" : "",
                     static_cast<int>(g_goal_in_range),
+                    static_cast<int>(g_goal_triggered),
+                    g_goal_triggered ? (ros::Time::now() - g_goal_trigger_time).toSec() : -1.0,
                     static_cast<int>(g_bag_started),
                     static_cast<int>(g_bag_lock));
 }

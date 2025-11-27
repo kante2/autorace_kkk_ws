@@ -42,6 +42,7 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
                                                      int ransac_max_iters,
                                                      double ransac_dist_thresh,
                                                      int ransac_min_inliers,
+                                                     int max_line_inliers,
                                                      double parallel_angle_deg,
                                                      double orth_angle_deg);
 
@@ -49,7 +50,9 @@ std::pair<bool, std::vector<LineInfo>> parkingDetect(const std::vector<double>& 
 GoalResult computeGoalFromLines(const std::vector<LineInfo>& lines,
                                 double min_width,
                                 double min_depth,
-                                double wall_offset);
+                                double wall_offset,
+                                double max_width = -1.0,
+                                double max_depth = -1.0);
 
 bool publishParkingGoal(ros::Publisher& pub,
                         tf2_ros::Buffer& tf_buffer,

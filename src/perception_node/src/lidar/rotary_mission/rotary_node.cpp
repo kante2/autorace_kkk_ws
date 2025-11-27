@@ -5,6 +5,7 @@
 #include <std_msgs/Float64.h>
 #include <sstream>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -24,11 +25,10 @@ std::string g_enable_topic;
 double g_eps = 0.3;
 int g_min_pts = 7;
 int g_max_pts = -1;
-double g_close_dist = 1.0;  // 이 거리 이내 클러스터 존재 시 감지 true
-double g_dynamic_speed_thresh = 0.2;  // 상대 속도 문턱 (m/s)
-double g_match_max_angle_deg = 15.0;  // 이전-현재 클러스터 매칭 허용 각도
-double g_match_max_dist = 1.0;        // 이전-현재 클러스터 매칭 허용 거리 차이 (m)
-bool g_enabled = true;
+double g_close_dist = 1.0;           // 튜닝: 감지 범위 (m), 클수록 넓게 감지
+double g_dynamic_speed_thresh = 0.2; // 튜닝: 동적 판정 속도 문턱 (m/s), 키우면 덜 민감
+double g_match_max_angle_deg = 15.0; // 튜닝: 프레임 매칭 허용 각도 (deg), 줄이면 오매칭 감소
+double g_match_max_dist = 1.0;       // 튜닝: 프레임 매칭 허용 거리 (m), 줄이면 오매칭 감소
 
 ros::Subscriber g_sub_scan;
 ros::Publisher g_pub_detected;
@@ -184,19 +184,33 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
   // 동적/정적 분류 (이전 프레임 대비 상대 속도)
   const std::vector<bool> dynamic_flags = classifyDynamics(det.centroids, scan_msg->header.stamp);
 
-  std::vector<ClusterCentroid> close_centroids;
-  std::vector<bool> close_dynamic_flags;
+  // 가까운 순으로 최대 3개까지 센트로이드 선택
+  std::vector<std::size_t> close_indices;
   if (det.detected)
   {
     for (std::size_t i = 0; i < det.centroids.size(); ++i)
     {
-      const auto &c = det.centroids[i];
-      if (c.distance <= g_close_dist)
+      if (det.centroids[i].distance <= g_close_dist)
       {
-        close_centroids.push_back(c);
-        close_dynamic_flags.push_back(dynamic_flags[i]);
+        close_indices.push_back(i);
       }
     }
+  }
+
+  std::sort(close_indices.begin(), close_indices.end(),
+            [&](std::size_t a, std::size_t b)
+            { return det.centroids[a].distance < det.centroids[b].distance; });
+  if (close_indices.size() > 3)
+  {
+    close_indices.resize(3);
+  }
+
+  std::vector<ClusterCentroid> close_centroids;
+  std::vector<bool> close_dynamic_flags;
+  for (std::size_t idx : close_indices)
+  {
+    close_centroids.push_back(det.centroids[idx]);
+    close_dynamic_flags.push_back(dynamic_flags[idx]);
   }
   bool has_close_dynamic = false;
   for (bool dyn : close_dynamic_flags)
@@ -274,15 +288,15 @@ int main(int argc, char **argv)
   pnh.param<std::string>("detected_topic", g_detected_topic, std::string("/rotary_detected"));
   pnh.param<std::string>("marker_topic", g_marker_topic, std::string("rotary/obstacle_markers"));
   pnh.param<std::string>("centroids_topic", g_centroids_topic, std::string("rotary/centroids"));
-  pnh.param<std::string>("enable_topic", g_enable_topic, std::string("/perception/rotary/enable"));
 
-  pnh.param<double>("eps", g_eps, 0.3);
-  pnh.param<int>("min_pts", g_min_pts, 5);
-  pnh.param<int>("max_pts", g_max_pts, -1); // -1: no limit
-  pnh.param<double>("close_dist", g_close_dist, 2.0);
-  pnh.param<double>("dynamic_speed_thresh", g_dynamic_speed_thresh, 0.1);
-  pnh.param<double>("match_max_angle_deg", g_match_max_angle_deg, 20.0);
-  pnh.param<double>("match_max_dist", g_match_max_dist, 1.2);
+  // --- 튜닝 파라미터 ---
+  pnh.param<double>("eps", g_eps, 0.3);                        // DBSCAN 클러스터 반경
+  pnh.param<int>("min_pts", g_min_pts, 8);                     // DBSCAN 최소 포인트 수
+  pnh.param<int>("max_pts", g_max_pts, 10);                    // DBSCAN 최대 포인트 수 (-1: 무제한)
+  pnh.param<double>("close_dist", g_close_dist, 1.0);          // 감지할 최대 거리 (m)
+  pnh.param<double>("dynamic_speed_thresh", g_dynamic_speed_thresh, 0.3); // 동적 판정 속도 문턱
+  pnh.param<double>("match_max_angle_deg", g_match_max_angle_deg, 10.0);   // 이전-현재 매칭 허용 각도
+  pnh.param<double>("match_max_dist", g_match_max_dist, 0.5);               // 이전-현재 매칭 허용 거리
 
   ROS_INFO("[rotary_node] subscribe scan='%s'", ros::names::resolve(g_scan_topic).c_str());
   ROS_INFO("[rotary_node] subscribe motor='%s', servo='%s'", "/commands/motor/speed",
