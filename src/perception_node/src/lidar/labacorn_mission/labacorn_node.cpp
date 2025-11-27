@@ -30,7 +30,7 @@ double g_range_max = 0.9;
 double g_front_min_deg = 60.0;
 double g_front_max_deg = 300.0;
 double g_lane_offset_y = 0.12;
-double g_lane_gain = 1.8;
+// double g_lane_gain = 1.5;
 
 // -------------------- 전역 Pub --------------------
 ros::Publisher g_pub_marker_arr;
@@ -163,15 +163,13 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
   }
   else if (left_cnt > 0)
   {
-    double rx = right_x_sum / right_cnt;
+    /*double rx = right_x_sum / right_cnt;
     double ry = right_y_sum / right_cnt;
-
-    // 오른쪽 클러스터 기준으로 중앙선 계산
-    // 장애물 폭 0.44m 기준, 차량이 너무 왼쪽으로 튀지 않게
     target_x = rx;
     target_y = ry - lane_offset_y * g_lane_gain;  // 중앙선 = 오른쪽 y - 반 폭
-    //target_x = left_x_sum / left_cnt;
-    //target_y = (left_y_sum / left_cnt) - lane_offset_y;
+    */
+    target_x = left_x_sum / left_cnt;
+    target_y = (left_y_sum / left_cnt) - lane_offset_y;
     // target_y = (left_y_sum / left_cnt) - lane_offset_y;
 
     return true;
@@ -179,15 +177,14 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
   else if (right_cnt > 0)
   {
 
-    double rx = right_x_sum / right_cnt;
+    /*double rx = right_x_sum / right_cnt;
     double ry = right_y_sum / right_cnt;  
 
     target_x = rx;
     target_y = ry + lane_offset_y * g_lane_gain;
-
-    //target_x = right_x_sum / right_cnt;
-    //target_y = (right_y_sum / right_cnt)+ lane_offset_y;
-    //target_y = (right_y_sum / right_cnt) + lane_offset_y;
+    */
+    target_x = right_x_sum / right_cnt;
+    target_y = (right_y_sum / right_cnt)+ lane_offset_y;
     return true;
   }
   return false;
@@ -219,9 +216,9 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     for (const auto& c : centroids) {
       double ang = std::atan2(c.y, c.x) * 180.0 / M_PI; // laser 프레임 기준
       if (ang < 0.0) ang += 360.0;
-      if (ang >= 120.0 && ang <= 165.0) {
+      if (ang >= 120.0 && ang <= 160.0) {
         if (sector1.empty()) sector1.push_back(c);
-      } else if (ang >= 215.0 && ang <= 240.0) {
+      } else if (ang >= 200.0 && ang <= 240.0) {
         if (sector2.empty()) sector2.push_back(c);
       }
     }
@@ -346,7 +343,7 @@ int main(int argc, char** argv)
   pnh.param<double>("range_max", g_range_max, 0.65);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
-  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.25);
+  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.4);
 
   ROS_INFO("[labacorn_node] subscribe scan='%s'",
            ros::names::resolve(g_scan_topic).c_str());

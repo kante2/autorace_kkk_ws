@@ -94,6 +94,11 @@ add_wego_node(lane_color_node
   src/camera/lane_mission/lane_color_node.cpp
 )
 
+# Gate mission camera node
+add_wego_node(gate_camera_node
+  src/camera/lane_mission/gate_camera_node.cpp
+)
+
 # Crosswalk perception node
 add_wego_node(crosswalk_node
   src/camera/crosswalk_mission/crosswalk_node.cpp
@@ -107,6 +112,11 @@ add_wego_node(crosswalk_node
 # Gate mission lidar node
 add_wego_node(gate_node
   src/lidar/gate_mission/gate_node.cpp
+)
+
+# Gate mission lidar-camera fusion node
+add_wego_node(gate_lidar_fusion_node
+  src/lidar/gate_mission/gate_lidar_fusion_node.cpp
 )
 
 # Rotary mission lidar node
