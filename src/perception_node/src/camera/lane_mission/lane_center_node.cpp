@@ -501,12 +501,12 @@ int main(int argc, char** argv)
   g_pub_center_point = nh.advertise<geometry_msgs::PointStamped>("/perception/center_point_px", 1);
   g_pub_curvature    = nh.advertise<std_msgs::Float64>("/perception/curvature_center", 1);
 
-  if (g_show_window) {
-    cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_src, 960, 540);
-    cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
-    cv::resizeWindow(g_win_bev, 960, 540);
-  }
+  // if (g_show_window) {
+  //   cv::namedWindow(g_win_src, cv::WINDOW_NORMAL);
+  //   cv::resizeWindow(g_win_src, 960, 540);
+  //   cv::namedWindow(g_win_bev, cv::WINDOW_NORMAL);
+  //   cv::resizeWindow(g_win_bev, 960, 540);
+  // }
 
   ROS_INFO("lane_center_node running...");
   ros::spin();
