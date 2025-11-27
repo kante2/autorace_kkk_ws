@@ -30,7 +30,8 @@ double g_range_max = 0.9;
 double g_front_min_deg = 60.0;
 double g_front_max_deg = 300.0;
 double g_lane_offset_y = 0.12;
-// double g_lane_gain = 1.5;
+double g_gain_right_only = 1.7;
+double g_gain_left_only = 1.0;
 
 // -------------------- 전역 Pub --------------------
 ros::Publisher g_pub_marker_arr;
@@ -148,6 +149,8 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
     }
   }
 
+  const double near_dist = 0.04;  // 차량 바로 앞 기준, 4cm
+
   if (left_cnt > 0 && right_cnt > 0)
   {
     double lx = left_x_sum / left_cnt;
@@ -163,28 +166,16 @@ bool computeTarget(const std::vector<Point2D>& centroids, double lane_offset_y,
   }
   else if (left_cnt > 0)
   {
-    /*double rx = right_x_sum / right_cnt;
-    double ry = right_y_sum / right_cnt;
-    target_x = rx;
-    target_y = ry - lane_offset_y * g_lane_gain;  // 중앙선 = 오른쪽 y - 반 폭
-    */
-    target_x = left_x_sum / left_cnt;
-    target_y = (left_y_sum / left_cnt) - lane_offset_y;
-    // target_y = (left_y_sum / left_cnt) - lane_offset_y;
-
+    double ly = left_y_sum / left_cnt;
+    target_x = near_dist;                 // 차량 바로 앞으로 땡김
+    target_y = ly - lane_offset_y * g_gain_left_only;
     return true;
   }
   else if (right_cnt > 0)
   {
-
-    /*double rx = right_x_sum / right_cnt;
-    double ry = right_y_sum / right_cnt;  
-
-    target_x = rx;
-    target_y = ry + lane_offset_y * g_lane_gain;
-    */
-    target_x = right_x_sum / right_cnt;
-    target_y = (right_y_sum / right_cnt)+ lane_offset_y;
+    double ry = right_y_sum / right_cnt;
+    target_x = near_dist;                 // 차량 바로 앞으로 땡김
+    target_y = ry + lane_offset_y * g_gain_right_only;
     return true;
   }
   return false;
@@ -209,16 +200,15 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   std::vector<int> labels = dbscan(points);
   std::vector<Point2D> centroids = computeCentroids(points, labels);
 
-  // 클러스터 수 제한: 총 2개 이하, 섹터별 1개씩 (120~170도, 190~240도)
-  // 크기와 무관하게 각 섹터 첫 번째 클러스터만 사용
+  // 클러스터 수 제한: 총 2개 이하, 섹터별 1개씩
   {
     std::vector<Point2D> sector1, sector2;
     for (const auto& c : centroids) {
-      double ang = std::atan2(c.y, c.x) * 180.0 / M_PI; // laser 프레임 기준
+      double ang = std::atan2(c.y, c.x) * 180.0 / M_PI;
       if (ang < 0.0) ang += 360.0;
-      if (ang >= 120.0 && ang <= 160.0) {
+      if (ang >= 120.0 && ang <= 150.0) {
         if (sector1.empty()) sector1.push_back(c);
-      } else if (ang >= 200.0 && ang <= 240.0) {
+      } else if (ang >= 210.0 && ang <= 240.0) {
         if (sector2.empty()) sector2.push_back(c);
       }
     }
@@ -226,7 +216,6 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     std::vector<Point2D> limited;
     if (!sector1.empty()) limited.push_back(sector1.front());
     if (!sector2.empty()) limited.push_back(sector2.front());
-    // 섹터에 아무 것도 없으면 기존 centroids를 유지해 감지 자체가 사라지지 않도록 함
     if (!limited.empty()) centroids = limited;
   }
   bool detected = !centroids.empty();
@@ -234,21 +223,19 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   // 2-1) 타깃 계산 및 퍼블리시
   double target_x = 0.0, target_y = 0.0;
   bool have_target = computeTarget(centroids, g_lane_offset_y, target_x, target_y);
-  geometry_msgs::PointStamped pt_out;  // 퍼블리시용 변환된 타깃
+  geometry_msgs::PointStamped pt_out;
   if (have_target)
   {
-    // 시각화용(레이저 프레임) 좌표는 그대로 사용, 퍼블리시용은 부호 반전 후 base_link 등으로 변환
     double pub_x = -target_x;
     double pub_y = -target_y;
 
     geometry_msgs::PointStamped pt_pub;
-    pt_pub.header = scan->header;  // laser 프레임
+    pt_pub.header = scan->header;
     pt_pub.point.x = pub_x;
     pt_pub.point.y = pub_y;
     pt_pub.point.z = 0.0;
     pt_out = pt_pub;
 
-    // frame 변환 (laser -> target_frame) 시도
     if (!g_target_frame.empty() && pt_pub.header.frame_id != g_target_frame && g_tf_buffer)
     {
       try {
@@ -256,7 +243,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
       } catch (const tf2::TransformException& ex) {
         ROS_WARN_THROTTLE(1.0, "[labacorn_node] TF transform failed (%s -> %s): %s",
                           pt_pub.header.frame_id.c_str(), g_target_frame.c_str(), ex.what());
-        pt_out = pt_pub;  // fallback: original frame
+        pt_out = pt_pub;
       }
     }
     g_pub_target.publish(pt_out);
@@ -292,7 +279,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     if (have_target)
     {
       visualization_msgs::Marker mt;
-      mt.header = scan->header;  // 시각화는 laser 프레임 그대로
+      mt.header = scan->header;
       mt.ns = "dbscan_target";
       mt.id = 0;
       mt.type = visualization_msgs::Marker::SPHERE;
@@ -323,7 +310,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
                     static_cast<int>(detected));
 }
 
-// -------------------- main --------------------//
+// -------------------- main --------------------
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "labacorn_node");
@@ -337,13 +324,13 @@ int main(int argc, char** argv)
   pnh.param<std::string>("target_topic", g_target_topic, std::string("/labacorn/target"));
   pnh.param<std::string>("target_frame", g_target_frame, std::string("laser"));
 
-  pnh.param<double>("eps", g_eps, 0.2);
+  pnh.param<double>("eps", g_eps, 0.15);
   pnh.param<int>("min_samples", g_min_samples, 3);
   pnh.param<double>("range_min", g_range_min, 0.3);
-  pnh.param<double>("range_max", g_range_max, 0.65);
+  pnh.param<double>("range_max", g_range_max, 0.45);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
-  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.4);
+  pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.3);
 
   ROS_INFO("[labacorn_node] subscribe scan='%s'",
            ros::names::resolve(g_scan_topic).c_str());
@@ -358,7 +345,6 @@ int main(int argc, char** argv)
   g_pub_detected = nh.advertise<std_msgs::Bool>(g_detected_topic, 10);
   g_pub_target = nh.advertise<geometry_msgs::PointStamped>(g_target_topic, 10);
 
-  // TF buffer/listener
   g_tf_buffer = std::make_shared<tf2_ros::Buffer>();
   g_tf_listener = std::make_shared<tf2_ros::TransformListener>(*g_tf_buffer);
 
