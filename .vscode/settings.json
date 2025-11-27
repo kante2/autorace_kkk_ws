@@ -12,7 +12,7 @@
         "system_error": "cpp",
         "random": "cpp"
     },
-    "cmake.sourceDirectory": "/root/autorace_kkk_ws/src/MORAI-ROS_morai_msgs",
+    "cmake.sourceDirectory": "/home/wego/autorace_kkk_ws/src/geometry2/tf2_msgs",
     "python.autoComplete.extraPaths": [
         "/home/wego/autorace_kkk_ws/devel/lib/python3/dist-packages",
         "/home/wego/wego_ws/devel/lib/python3/dist-packages",
