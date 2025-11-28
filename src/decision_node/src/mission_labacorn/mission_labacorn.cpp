@@ -214,7 +214,8 @@ void mission_labacorn_step()
       g_avoid_active = false;
       g_latest_left_dist = g_latest_right_dist = -1.0; // 소비 완료
     }
-    servo_out = g_avoid_left ? g_servo_min : g_servo_max;
+    // 최대 조향: 왼쪽 장애물->왼쪽(0), 오른쪽 장애물->오른쪽(1)로 강제
+    servo_out = g_avoid_left ? 0.0 : 1.0;
 
     std_msgs::Float64 motor_msg; motor_msg.data = motor_out;
     std_msgs::Float64 servo_msg; servo_msg.data = servo_out;

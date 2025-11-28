@@ -2,6 +2,7 @@
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/String.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <laser_geometry/laser_geometry.h>
 #include <geometry_msgs/PointStamped.h>
@@ -12,6 +13,8 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 #include "object_detect_laba.hpp"  // Point2D, extern ROI 파라미터
 
@@ -30,14 +33,15 @@ double g_range_max = 0.9;
 double g_front_min_deg = 60.0;
 double g_front_max_deg = 300.0;
 double g_lane_offset_y = 0.12;
-double g_gain_right_only = 1.7;
-double g_gain_left_only = 1.0;
+double g_gain_right_only = 1.0;
+double g_gain_left_only = 1.6;
 
 // -------------------- 전역 Pub --------------------
 ros::Publisher g_pub_marker_arr;
 ros::Publisher g_pub_cloud;
 ros::Publisher g_pub_detected;
 ros::Publisher g_pub_target;
+ros::Publisher g_pub_cluster_info;
 laser_geometry::LaserProjection g_projector;
 std::shared_ptr<tf2_ros::Buffer> g_tf_buffer;
 std::shared_ptr<tf2_ros::TransformListener> g_tf_listener;
@@ -206,9 +210,9 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
     for (const auto& c : centroids) {
       double ang = std::atan2(c.y, c.x) * 180.0 / M_PI;
       if (ang < 0.0) ang += 360.0;
-      if (ang >= 120.0 && ang <= 150.0) {
+      if (ang >= 120.0 && ang <= 180.0) {  // < 150
         if (sector1.empty()) sector1.push_back(c);
-      } else if (ang >= 210.0 && ang <= 240.0) {
+      } else if (ang > 180.0 && ang <= 240.0) { // 210
         if (sector2.empty()) sector2.push_back(c);
       }
     }
@@ -303,6 +307,26 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
   msg.data = detected;
   g_pub_detected.publish(msg);
 
+  // 5) 클러스터 거리와 각도 퍼블리시 (후방=0도, 전방=180도, 반시계+)
+  // 포맷: "ang_deg:dist,ang_deg:dist" (예: "135.0:0.41,225.0:0.38")
+  std_msgs::String info_msg;
+  std::ostringstream oss;
+  bool first = true;
+  for (const auto& c : centroids)
+  {
+    const double dist = std::hypot(c.x, c.y);
+    // 각도 기준: 후방=0도, 전방=180도, 반시계 증가 (라이다 원본 그대로)
+    double ang_deg = std::atan2(c.y, c.x) * 180.0 / M_PI;
+    ang_deg = std::fmod(ang_deg + 360.0, 360.0);      // 0~360 범위로 정규화
+
+    if (!first) oss << ",";
+    first = false;
+    oss << std::fixed << std::setprecision(1) << ang_deg << ":" << std::setprecision(3) << dist;
+  }
+  info_msg.data = oss.str();
+  g_pub_cluster_info.publish(info_msg);
+  ROS_INFO_THROTTLE(0.5, "[labacorn_node] cluster_info='%s'", info_msg.data.c_str());
+
   ROS_INFO_THROTTLE(0.5,
                     "[labacorn_node] points=%zu centroids=%zu detected=%d",
                     points.size(),
@@ -326,8 +350,8 @@ int main(int argc, char** argv)
 
   pnh.param<double>("eps", g_eps, 0.15);
   pnh.param<int>("min_samples", g_min_samples, 3);
-  pnh.param<double>("range_min", g_range_min, 0.3);
-  pnh.param<double>("range_max", g_range_max, 0.45);
+  pnh.param<double>("range_min", g_range_min, 0.15);
+  pnh.param<double>("range_max", g_range_max, 0.55);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
   pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.3);
@@ -344,6 +368,7 @@ int main(int argc, char** argv)
   g_pub_cloud = nh.advertise<sensor_msgs::PointCloud2>(g_cloud_topic, 1);
   g_pub_detected = nh.advertise<std_msgs::Bool>(g_detected_topic, 10);
   g_pub_target = nh.advertise<geometry_msgs::PointStamped>(g_target_topic, 10);
+  g_pub_cluster_info = nh.advertise<std_msgs::String>("/cluster_info", 1);
 
   g_tf_buffer = std::make_shared<tf2_ros::Buffer>();
   g_tf_listener = std::make_shared<tf2_ros::TransformListener>(*g_tf_buffer);

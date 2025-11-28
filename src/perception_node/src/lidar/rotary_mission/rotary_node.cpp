@@ -255,8 +255,8 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
         continue;
       }
       const auto &c = close_centroids[i];
-      const double adjusted_angle = c.angle + 360.0;  // 라이다가 뒤집힌 경우 단순 오프셋
-      centroids_msg.data.push_back(static_cast<float>(adjusted_angle));
+      // 라이다가 후방=0, 전방=180으로 각도를 내보내므로 별도 오프셋 없이 그대로 퍼블리시
+      centroids_msg.data.push_back(static_cast<float>(c.angle));
       centroids_msg.data.push_back(static_cast<float>(c.distance));
     }
     if (!centroids_msg.data.empty())
@@ -286,8 +286,7 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
       {
         continue;
       }
-      const double adjusted_angle = det.centroids[i].angle + 360.0;
-      oss << " #" << idx++ << "=( " << std::fixed << std::setprecision(1) << adjusted_angle
+      oss << " #" << idx++ << "=( " << std::fixed << std::setprecision(1) << det.centroids[i].angle
           << " deg, " << std::setprecision(2) << det.centroids[i].distance << " m )";
     }
     ROS_INFO_THROTTLE(1.0, "%s", oss.str().c_str());
