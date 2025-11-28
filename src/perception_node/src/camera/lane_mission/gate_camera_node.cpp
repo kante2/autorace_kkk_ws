@@ -208,8 +208,8 @@ void imageCB(const sensor_msgs::ImageConstPtr &msg)
       cv::Mat canvas_all;
       cv::vconcat(top_row, bottom_row, canvas_all);
 
-      cv::imshow(g_win_name, canvas_all);
-      cv::waitKey(1);
+      // cv::imshow(g_win_name, canvas_all);
+      // cv::waitKey(1);
     }
   }
   catch (const cv_bridge::Exception &e)

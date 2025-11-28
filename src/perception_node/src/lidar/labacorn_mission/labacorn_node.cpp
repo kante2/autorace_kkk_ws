@@ -351,7 +351,7 @@ int main(int argc, char** argv)
   pnh.param<double>("eps", g_eps, 0.15);
   pnh.param<int>("min_samples", g_min_samples, 3);
   pnh.param<double>("range_min", g_range_min, 0.15);
-  pnh.param<double>("range_max", g_range_max, 0.55);
+  pnh.param<double>("range_max", g_range_max, 0.65);
   pnh.param<double>("front_min_deg", g_front_min_deg, 120.0);
   pnh.param<double>("front_max_deg", g_front_max_deg, 240.0);
   pnh.param<double>("lane_offset_y", g_lane_offset_y, 0.3);
