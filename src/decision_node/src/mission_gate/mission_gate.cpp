@@ -29,7 +29,7 @@ static double g_stop_speed = 0.0;       // 정지 속도 (모터 cmd)
 static double g_gate_stop_dist = 2.0;   // 로봇-게이트 중심 거리 임계값 [m]
 
 // 게이트 토픽 타임아웃
-static double g_gate_timeout_sec = 0.5;
+static double g_gate_timeout_sec = 5.0;
 static bool g_have_gate_detect = false;
 static bool g_have_gate_dist = false;
 static ros::Time g_last_gate_time;

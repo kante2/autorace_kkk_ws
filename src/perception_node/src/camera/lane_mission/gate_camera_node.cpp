@@ -13,7 +13,7 @@
 // -------------------- 전역 상태 --------------------
 
 // 디버그 창
-bool g_show_window = true;
+bool g_show_window = false;
 std::string g_win_name = "gate_camera_debug";
 
 // ROI 비율 (파이썬 코드 기준)
@@ -158,6 +158,7 @@ void imageCB(const sensor_msgs::ImageConstPtr &msg)
                       combined_ratio, g_yellow_thresh_percent, detected ? 1 : 0);
 
     // ----------------- 시각화 -----------------
+    /* display 비활성화
     if (g_show_window)
     {
       // 위: 원본 + ROI 박스 + 전체 퍼센트
@@ -211,6 +212,7 @@ void imageCB(const sensor_msgs::ImageConstPtr &msg)
       // cv::imshow(g_win_name, canvas_all);
       // cv::waitKey(1);
     }
+    */
   }
   catch (const cv_bridge::Exception &e)
   {
@@ -257,11 +259,13 @@ int main(int argc, char **argv)
   ros::Subscriber img_sub =
       nh.subscribe(image_topic, 1, imageCB);
 
+  /* display 비활성화
   if (g_show_window)
   {
     cv::namedWindow(g_win_name, cv::WINDOW_NORMAL);
     cv::resizeWindow(g_win_name, 1280, 720);
   }
+  */
 
   ROS_INFO("gate_camera_node running...");
   ros::spin();
