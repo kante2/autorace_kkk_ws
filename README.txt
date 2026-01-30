@@ -1,7 +1,14 @@
-
 # inha_kkk ws
 
 ros1 noetic
+-----------------------------------------
+
+# 대회결과
+
+AutoRace 2025 스케일카 자율주행 경진대회 [INHA_K3][부산시장상-최우수상] 수상
+2025-09-10 ~ 2025-11-28
+
+-----------------------------------------
 
 1.rosbridge 초기설정 
 sudo apt update
@@ -9,35 +16,22 @@ sudo apt install ros-$ROS_DISTRO-rosbridge-suite
 1-2.최종 rosbridge 용
 roslaunch rosbridge_server rosbridge_websocket.launch
 
-
 -----------------------------------------
 
-<정리중,,, >
+# 실행명령어
 
-PERCEPTION/ 부분은, 센서의 전처리, 센서가 넘겨줘야 하는 값들을 넣어놓았다.
-CONTROL/ 부분은, 제어에 관한 기능을 넣어놓았다.
-DECISION/ 부분은, 미션별로 분기해놓았고, MAIN_NODE가 제어한다.
-각 미션별 디버깅을 위해서 LAUNCH로 각각 실행할 수 있게끔 처리하였다.
+## Perception Node
+roslaunch perception_node perception.launch
 
-센서 부분을 키고 -> DECISION에 있는 LAUNCH를 실행하여 각 미션을 확인한다.
-값 튜닝은 CONTROL의 YAML을 변경하면 된다.
+## Decision Node
+roslaunch decision_node decision.launch
 
-1117은, old version,,
 
 
 
 -----------------------------------------
 
-
-
-
-
-
-
-
-
-
-# ------------install 해야 하는 것들 -------------
+# install 해야 하는 것들
 sudo apt update
 sudo apt install -y ros-noetic-vision-msgs
 
