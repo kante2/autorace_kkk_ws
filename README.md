@@ -1,6 +1,6 @@
 # INHA_K3 AutoRace ROS Workspace
 
-![ROS](https://img.shields.io/badge/ROS-Noetic-green) ![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![ROS](https://img.shields.io/badge/ROS-Noetic-green) ![Python](https://img.shields.io/badge/Python-3.8+-blue) ![C++](https://img.shields.io/badge/C++-11%2B-red)
 
 ## 🏆 대회 결과
 
@@ -90,7 +90,7 @@ source ~/.bashrc
 
 ## 🐳 Docker
 
-> ⚠️ 현재 불안정 상태 - 테스트 진행 중
+> using :: /home/kante/autorace_kkk_ws/docker-noetic
 
 ---
 
@@ -110,7 +110,3 @@ chmod +x setPermission.sh keylok_install.sh MORAISim.sh MoraiLauncher_Lin.x86_64
 
 > 💡 **주의**: 계정에 맞는 런처를 사용해야 합니다. 공식 사이트의 런처로는 로그인이 되지 않을 수 있습니다.
 
-
----
-
-**마지막 업데이트**: 2026-01-30
